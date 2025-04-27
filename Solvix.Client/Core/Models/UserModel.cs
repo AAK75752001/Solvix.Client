@@ -1,0 +1,75 @@
+﻿using System.Text.Json.Serialization;
+
+namespace Solvix.Client.Core.Models
+{
+    public class UserModel
+    {
+        public long Id { get; set; }
+        public string Username { get; set; } = string.Empty;
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+
+        [JsonIgnore]
+        public string DisplayName
+        {
+            get
+            {
+                if (!string.IsNullOrWhiteSpace(FirstName) || !string.IsNullOrWhiteSpace(LastName))
+                    return $"{FirstName} {LastName}".Trim();
+
+                return !string.IsNullOrWhiteSpace(Username) ? Username : PhoneNumber ?? "Unknown User";
+            }
+        }
+
+        [JsonIgnore]
+        public string Initials
+        {
+            get
+            {
+                string initials = string.Empty;
+
+                if (!string.IsNullOrWhiteSpace(FirstName) && FirstName.Length > 0)
+                    initials += FirstName[0];
+
+                if (!string.IsNullOrWhiteSpace(LastName) && LastName.Length > 0)
+                    initials += LastName[0];
+
+                return !string.IsNullOrWhiteSpace(initials) ? initials.ToUpper() : "?";
+            }
+        }
+
+        public string? PhoneNumber { get; set; }
+        public string? Token { get; set; }
+        public bool IsOnline { get; set; }
+        public DateTime? LastActive { get; set; }
+
+        [JsonIgnore]
+        public string LastActiveText
+        {
+            get
+            {
+                if (IsOnline)
+                    return "Online";
+
+                if (!LastActive.HasValue)
+                    return string.Empty;
+
+                var timeSpan = DateTime.UtcNow - LastActive.Value;
+
+                if (timeSpan.TotalMinutes < 1)
+                    return "Just now";
+
+                if (timeSpan.TotalHours < 1)
+                    return $"{(int)timeSpan.TotalMinutes} minutes ago";
+
+                if (timeSpan.TotalDays < 1)
+                    return $"{(int)timeSpan.TotalHours} hours ago";
+
+                if (timeSpan.TotalDays < 7)
+                    return $"{(int)timeSpan.TotalDays} days ago";
+
+                return LastActive.Value.ToString("yyyy-MM-dd");
+            }
+        }
+    }
+}

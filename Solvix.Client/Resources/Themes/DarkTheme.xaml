@@ -1,0 +1,37 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<?xaml-comp compile="true" ?>
+<ResourceDictionary 
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml">
+
+    <!-- App Theme Colors -->
+    <Color x:Key="PrimaryColor">#7B5CF0</Color>
+    <Color x:Key="SecondaryColor">#8871DC</Color>
+    <Color x:Key="TertiaryColor">#A79BF7</Color>
+    <Color x:Key="AccentColor">#6C52DD</Color>
+
+    <!-- Page and Controls -->
+    <Color x:Key="PageBackgroundColor">#121212</Color>
+    <Color x:Key="CardBackgroundColor">#1E1E1E</Color>
+    <Color x:Key="FrameBorderColor">#333333</Color>
+
+    <!-- Text Colors -->
+    <Color x:Key="PrimaryTextColor">#FFFFFF</Color>
+    <Color x:Key="SecondaryTextColor">#CCCCCC</Color>
+    <Color x:Key="TertiaryTextColor">#999999</Color>
+    <Color x:Key="InverseTextColor">#222222</Color>
+
+    <!-- Other UI Elements -->
+    <Color x:Key="SeparatorColor">#333333</Color>
+    <Color x:Key="ShadowColor">#88000000</Color>
+    <Color x:Key="SuccessColor">#34C759</Color>
+    <Color x:Key="ErrorColor">#FF453A</Color>
+    <Color x:Key="WarningColor">#FF9F0A</Color>
+    <Color x:Key="InfoColor">#0A84FF</Color>
+
+    <!-- Message Bubbles -->
+    <Color x:Key="SentMessageBubbleColor">#056162</Color>
+    <Color x:Key="ReceivedMessageBubbleColor">#242424</Color>
+    <Color x:Key="SentMessageTextColor">#FFFFFF</Color>
+    <Color x:Key="ReceivedMessageTextColor">#FFFFFF</Color>
+</ResourceDictionary>

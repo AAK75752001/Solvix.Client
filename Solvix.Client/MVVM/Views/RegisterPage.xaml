@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:viewmodels="clr-namespace:Solvix.Client.MVVM.ViewModels"
+             x:Class="Solvix.Client.MVVM.Views.RegisterPage"
+             x:DataType="viewmodels:RegisterViewModel"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="{DynamicResource PageBackgroundColor}">
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- Header -->
+        <Grid Grid.Row="0" 
+              ColumnDefinitions="Auto,*" 
+              BackgroundColor="{DynamicResource PrimaryColor}" 
+              Padding="15">
+
+            <!-- Back Button -->
+            <Button Grid.Column="0"
+                    Text="←"
+                    Command="{Binding BackCommand}"
+                    FontSize="24"
+                    TextColor="White"
+                    BackgroundColor="Transparent"
+                    WidthRequest="40" />
+
+            <!-- Page Title -->
+            <Label Grid.Column="1"
+                   Text="Create Account"
+                   TextColor="White"
+                   FontSize="20"
+                   FontAttributes="Bold"
+                   VerticalOptions="Center" />
+        </Grid>
+
+        <!-- Content -->
+        <ScrollView Grid.Row="1" Padding="20,0">
+            <VerticalStackLayout Spacing="20" VerticalOptions="Center">
+                <!-- Phone Number -->
+                <Frame BackgroundColor="{DynamicResource CardBackgroundColor}" Padding="15" CornerRadius="10" BorderColor="Transparent">
+                    <VerticalStackLayout Spacing="5">
+                        <Label Text="Phone Number" TextColor="{DynamicResource PrimaryTextColor}" FontSize="14" />
+                        <Entry Text="{Binding PhoneNumber}"
+                               Placeholder="09XXXXXXXXX"
+                               PlaceholderColor="{DynamicResource TertiaryTextColor}"
+                               TextColor="{DynamicResource PrimaryTextColor}"
+                               BackgroundColor="Transparent"
+                               Keyboard="Telephone"
+                               MaxLength="11" />
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- First Name -->
+                <Frame BackgroundColor="{DynamicResource CardBackgroundColor}" Padding="15" CornerRadius="10" BorderColor="Transparent">
+                    <VerticalStackLayout Spacing="5">
+                        <Label Text="First Name" TextColor="{DynamicResource PrimaryTextColor}" FontSize="14" />
+                        <Entry Text="{Binding FirstName}"
+                               Placeholder="Enter your first name"
+                               PlaceholderColor="{DynamicResource TertiaryTextColor}"
+                               TextColor="{DynamicResource PrimaryTextColor}"
+                               BackgroundColor="Transparent" />
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Last Name -->
+                <Frame BackgroundColor="{DynamicResource CardBackgroundColor}" Padding="15" CornerRadius="10" BorderColor="Transparent">
+                    <VerticalStackLayout Spacing="5">
+                        <Label Text="Last Name" TextColor="{DynamicResource PrimaryTextColor}" FontSize="14" />
+                        <Entry Text="{Binding LastName}"
+                               Placeholder="Enter your last name"
+                               PlaceholderColor="{DynamicResource TertiaryTextColor}"
+                               TextColor="{DynamicResource PrimaryTextColor}"
+                               BackgroundColor="Transparent" />
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Password -->
+                <Frame BackgroundColor="{DynamicResource CardBackgroundColor}" Padding="15" CornerRadius="10" BorderColor="Transparent">
+                    <VerticalStackLayout Spacing="5">
+                        <Label Text="Password" TextColor="{DynamicResource PrimaryTextColor}" FontSize="14" />
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Entry Grid.Column="0"
+                                   Text="{Binding Password}"
+                                   Placeholder="Enter your password"
+                                   PlaceholderColor="{DynamicResource TertiaryTextColor}"
+                                   TextColor="{DynamicResource PrimaryTextColor}"
+                                   BackgroundColor="Transparent"
+                                   IsPassword="{Binding IsPasswordVisible, Converter={StaticResource InverseBoolConverter}}" />
+                            <Button Grid.Column="1"
+                                    Text="👁️"
+                                    BackgroundColor="Transparent"
+                                    Command="{Binding TogglePasswordVisibilityCommand}" />
+                        </Grid>
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Confirm Password -->
+                <Frame BackgroundColor="{DynamicResource CardBackgroundColor}" Padding="15" CornerRadius="10" BorderColor="Transparent">
+                    <VerticalStackLayout Spacing="5">
+                        <Label Text="Confirm Password" TextColor="{DynamicResource PrimaryTextColor}" FontSize="14" />
+                        <Entry Text="{Binding ConfirmPassword}"
+                               Placeholder="Confirm your password"
+                               PlaceholderColor="{DynamicResource TertiaryTextColor}"
+                               TextColor="{DynamicResource PrimaryTextColor}"
+                               BackgroundColor="Transparent"
+                               IsPassword="{Binding IsPasswordVisible, Converter={StaticResource InverseBoolConverter}}" />
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Terms and Conditions -->
+                <HorizontalStackLayout Spacing="10">
+                    <CheckBox IsChecked="{Binding AcceptedTerms}" />
+                    <Label Text="I accept the Terms and Conditions"
+                           TextColor="{DynamicResource PrimaryTextColor}"
+                           VerticalOptions="Center" />
+                </HorizontalStackLayout>
+
+                <!-- Register Button -->
+                <Button Text="Register"
+                        Command="{Binding RegisterCommand}"
+                        IsEnabled="{Binding IsSubmitEnabled}"
+                        BackgroundColor="{DynamicResource PrimaryColor}"
+                        TextColor="White"
+                        FontAttributes="Bold"
+                        CornerRadius="25"
+                        HeightRequest="50"
+                        Margin="0,20,0,0" />
+
+                <!-- Loading Indicator -->
+                <ActivityIndicator IsRunning="{Binding IsLoading}"
+                                   IsVisible="{Binding IsLoading}"
+                                   Color="{DynamicResource PrimaryColor}"
+                                   HeightRequest="50"
+                                   WidthRequest="50"
+                                   HorizontalOptions="Center" />
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <!-- Footer -->
+        <VerticalStackLayout Grid.Row="2" Padding="20" Spacing="10" HorizontalOptions="Center">
+            <Label Text="© 2025 Solvix Chat" HorizontalOptions="Center" TextColor="{DynamicResource TertiaryTextColor}" FontSize="12" />
+            <Label Text="Version 1.0.0" HorizontalOptions="Center" TextColor="{DynamicResource TertiaryTextColor}" FontSize="12" />
+        </VerticalStackLayout>
+    </Grid>
+</ContentPage>

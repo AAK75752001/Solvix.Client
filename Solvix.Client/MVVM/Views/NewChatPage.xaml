@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:viewmodels="clr-namespace:Solvix.Client.MVVM.ViewModels"
+             xmlns:models="clr-namespace:Solvix.Client.Core.Models"
+             x:Class="Solvix.Client.MVVM.Views.NewChatPage"
+             x:DataType="viewmodels:NewChatViewModel"
+             Title="Start New Chat"
+             Shell.NavBarIsVisible="False"
+             BackgroundColor="{DynamicResource PageBackgroundColor}">
+
+    <Grid RowDefinitions="Auto,Auto,*">
+        <!-- Header -->
+        <Grid Grid.Row="0" 
+              ColumnDefinitions="Auto,*,Auto" 
+              BackgroundColor="{DynamicResource PrimaryColor}" 
+              Padding="15">
+
+            <!-- Back Button -->
+            <Button Grid.Column="0"
+                    Text="←"
+                    Command="{Binding BackCommand}"
+                    FontSize="24"
+                    TextColor="White"
+                    BackgroundColor="Transparent"
+                    WidthRequest="40" />
+
+            <!-- Page Title -->
+            <Label Grid.Column="1"
+                   Text="Start New Chat"
+                   TextColor="White"
+                   FontSize="20"
+                   FontAttributes="Bold"
+                   VerticalOptions="Center"
+                   HorizontalOptions="Center" />
+        </Grid>
+
+        <!-- Search Bar -->
+        <Frame Grid.Row="1" 
+               Margin="15,10" 
+               Padding="5" 
+               CornerRadius="25" 
+               BorderColor="{DynamicResource PrimaryColor}" 
+               BackgroundColor="{DynamicResource CardBackgroundColor}">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <Label Grid.Column="0" 
+                       Text="🔍" 
+                       FontSize="18" 
+                       VerticalOptions="Center" 
+                       Margin="10,0,0,0" />
+
+                <Entry Grid.Column="1" 
+                       Text="{Binding SearchQuery}" 
+                       Placeholder="Search by name or phone"
+                       PlaceholderColor="{DynamicResource TertiaryTextColor}"
+                       TextColor="{DynamicResource PrimaryTextColor}"
+                       BackgroundColor="Transparent"
+                       ReturnCommand="{Binding SearchCommand}" />
+
+                <Button Grid.Column="2" 
+                        Text="✕" 
+                        Command="{Binding ClearSearchCommand}"
+                        IsVisible="{Binding SearchQuery, Converter={StaticResource StringToBoolConverter}}"
+                        BackgroundColor="Transparent"
+                        FontSize="18"
+                        WidthRequest="40" />
+            </Grid>
+        </Frame>
+
+        <!-- Content -->
+        <ScrollView Grid.Row="2">
+            <VerticalStackLayout Spacing="20" Padding="15">
+                <!-- Search Results -->
+                <VerticalStackLayout IsVisible="{Binding HasUsers}">
+                    <Label Text="Search Results" 
+                           FontSize="18" 
+                           TextColor="{DynamicResource PrimaryTextColor}" 
+                           FontAttributes="Bold" 
+                           Margin="0,0,0,10" />
+
+                    <CollectionView ItemsSource="{Binding Users}" 
+                                    SelectionMode="Single"
+                                    SelectionChangedCommand="{Binding SelectUserCommand}"
+                                    SelectionChangedCommandParameter="{Binding Source={RelativeSource Self}, Path=SelectedItem}">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="models:UserModel">
+                                <Frame Margin="0,5" 
+                                       Padding="10" 
+                                       CornerRadius="15" 
+                                       BorderColor="Transparent"
+                                       BackgroundColor="{DynamicResource CardBackgroundColor}">
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <!-- Profile Picture / Initials -->
+                                        <Frame Grid.Column="0"
+                                               BackgroundColor="{DynamicResource PrimaryColor}"
+                                               CornerRadius="25"
+                                               HeightRequest="50"
+                                               WidthRequest="50"
+                                               Padding="0"
+                                               VerticalOptions="Center"
+                                               HorizontalOptions="Center">
+                                            <Label Text="{Binding Initials}"
+                                                   TextColor="White"
+                                                   FontSize="20"
+                                                   FontAttributes="Bold"
+                                                   VerticalOptions="Center"
+                                                   HorizontalOptions="Center" />
+                                        </Frame>
+
+                                        <!-- User Info -->
+                                        <VerticalStackLayout Grid.Column="1" 
+                                                             Spacing="3" 
+                                                             VerticalOptions="Center" 
+                                                             Margin="15,0,0,0">
+                                            <Label Text="{Binding DisplayName}" 
+                                                   FontSize="16" 
+                                                   TextColor="{DynamicResource PrimaryTextColor}" 
+                                                   FontAttributes="Bold" />
+
+                                            <Label Text="{Binding PhoneNumber}" 
+                                                   FontSize="14" 
+                                                   TextColor="{DynamicResource SecondaryTextColor}" />
+                                        </VerticalStackLayout>
+
+                                        <!-- Online Status -->
+                                        <Frame Grid.Column="2"
+                                               BackgroundColor="{Binding IsOnline, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Color'}"
+                                               CornerRadius="12"
+                                               HeightRequest="24"
+                                               WidthRequest="24"
+                                               Padding="0"
+                                               VerticalOptions="Center"
+                                               HorizontalOptions="End">
+                                            <Label Text="{Binding IsOnline, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Text'}"
+                                                   TextColor="White"
+                                                   FontSize="14"
+                                                   VerticalOptions="Center"
+                                                   HorizontalOptions="Center" />
+                                        </Frame>
+                                    </Grid>
+                                </Frame>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+
+                <!-- Online Users -->
+                <VerticalStackLayout IsVisible="{Binding HasOnlineUsers}">
+                    <Label Text="Online Users" 
+                           FontSize="18" 
+                           TextColor="{DynamicResource PrimaryTextColor}" 
+                           FontAttributes="Bold" 
+                           Margin="0,0,0,10" />
+
+                    <CollectionView ItemsSource="{Binding OnlineUsers}" 
+                                    SelectionMode="Single"
+                                    SelectionChangedCommand="{Binding SelectUserCommand}"
+                                    SelectionChangedCommandParameter="{Binding Source={RelativeSource Self}, Path=SelectedItem}">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="models:UserModel">
+                                <Frame Margin="0,5" 
+                                       Padding="10" 
+                                       CornerRadius="15" 
+                                       BorderColor="Transparent"
+                                       BackgroundColor="{DynamicResource CardBackgroundColor}">
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <!-- Profile Picture / Initials -->
+                                        <Frame Grid.Column="0"
+                                               BackgroundColor="{DynamicResource PrimaryColor}"
+                                               CornerRadius="25"
+                                               HeightRequest="50"
+                                               WidthRequest="50"
+                                               Padding="0"
+                                               VerticalOptions="Center"
+                                               HorizontalOptions="Center">
+                                            <Label Text="{Binding Initials}"
+                                                   TextColor="White"
+                                                   FontSize="20"
+                                                   FontAttributes="Bold"
+                                                   VerticalOptions="Center"
+                                                   HorizontalOptions="Center" />
+                                        </Frame>
+
+                                        <!-- User Info -->
+                                        <VerticalStackLayout Grid.Column="1" 
+                                                             Spacing="3" 
+                                                             VerticalOptions="Center" 
+                                                             Margin="15,0,0,0">
+                                            <Label Text="{Binding DisplayName}" 
+                                                   FontSize="16" 
+                                                   TextColor="{DynamicResource PrimaryTextColor}" 
+                                                   FontAttributes="Bold" />
+
+                                            <Label Text="{Binding PhoneNumber}" 
+                                                   FontSize="14" 
+                                                   TextColor="{DynamicResource SecondaryTextColor}" />
+                                        </VerticalStackLayout>
+
+                                        <!-- Online Status -->
+                                        <Frame Grid.Column="2"
+                                               BackgroundColor="Green"
+                                               CornerRadius="12"
+                                               HeightRequest="24"
+                                               WidthRequest="24"
+                                               Padding="0"
+                                               VerticalOptions="Center"
+                                               HorizontalOptions="End">
+                                            <Label Text="●"
+                                                   TextColor="White"
+                                                   FontSize="14"
+                                                   VerticalOptions="Center"
+                                                   HorizontalOptions="Center" />
+                                        </Frame>
+                                    </Grid>
+                                </Frame>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+
+                <!-- Empty State -->
+                <VerticalStackLayout IsVisible="{Binding IsEmpty}"
+                                     VerticalOptions="Center" 
+                                     HorizontalOptions="Center" 
+                                     Spacing="20" 
+                                     Margin="0,50,0,0">
+                    <Image Source="search_users.png" 
+                           HeightRequest="150" 
+                           WidthRequest="150" 
+                           Opacity="0.7" />
+
+                    <Label Text="Search for users" 
+                           TextColor="{DynamicResource SecondaryTextColor}" 
+                           FontSize="18" 
+                           HorizontalOptions="Center" />
+
+                    <Label Text="Search by name or phone number to find users to chat with" 
+                           TextColor="{DynamicResource TertiaryTextColor}" 
+                           FontSize="14" 
+                           HorizontalOptions="Center" 
+                           HorizontalTextAlignment="Center"
+                           MaxLines="3"
+                           LineBreakMode="WordWrap" />
+                </VerticalStackLayout>
+
+                <!-- Loading State -->
+                <ActivityIndicator IsRunning="{Binding IsSearching}" 
+                                   IsVisible="{Binding IsSearching}" 
+                                   Color="{DynamicResource PrimaryColor}" 
+                                   HeightRequest="50" 
+                                   WidthRequest="50" 
+                                   HorizontalOptions="Center" 
+                                   VerticalOptions="Center" />
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
+</ContentPage>

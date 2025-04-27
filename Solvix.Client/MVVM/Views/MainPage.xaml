@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:viewmodels="clr-namespace:Solvix.Client.MVVM.ViewModels"
+             xmlns:views="clr-namespace:Solvix.Client.MVVM.Views"
+             xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+             x:Class="Solvix.Client.MVVM.Views.MainPage"
+             x:DataType="viewmodels:MainViewModel"
+             Shell.NavBarIsVisible="False"
+             Title="Solvix Chat"
+             BackgroundColor="{DynamicResource PageBackgroundColor}">
+
+    <Grid RowDefinitions="Auto, *">
+        <!-- Header -->
+        <Border Grid.Row="0" 
+                BackgroundColor="{DynamicResource PrimaryColor}" 
+                Padding="15"
+                StrokeThickness="0">
+            <Border.Shadow>
+                <Shadow Brush="{DynamicResource ShadowColor}"
+                        Offset="0,4"
+                        Opacity="0.2"
+                        Radius="5" />
+            </Border.Shadow>
+
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                <!-- App Logo / Name -->
+                <HorizontalStackLayout Grid.Column="0" Spacing="10">
+                    <Image Source="logo_small.png" HeightRequest="30" WidthRequest="30" />
+
+                    <Label Text="Solvix Chat" 
+                           TextColor="White" 
+                           FontSize="20" 
+                           FontAttributes="Bold" 
+                           VerticalOptions="Center">
+                        <Label.Shadow>
+                            <Shadow Brush="{DynamicResource TertiaryColor}"
+                                    Offset="0,0"
+                                    Opacity="0.5"
+                                    Radius="8" />
+                        </Label.Shadow>
+                    </Label>
+                </HorizontalStackLayout>
+
+                <!-- Spacer -->
+                <BoxView Grid.Column="1" Color="Transparent" />
+
+                <!-- New Chat Button -->
+                <Button Grid.Column="2"
+                        Text="+"
+                        Command="{Binding NewChatCommand}"
+                        BackgroundColor="Transparent"
+                        TextColor="White"
+                        FontSize="30"
+                        Margin="0,0,15,0"
+                        WidthRequest="40"
+                        HeightRequest="40" />
+
+                <!-- Settings Button -->
+                <Button Grid.Column="3"
+                        Text="⚙️"
+                        Command="{Binding SettingsCommand}"
+                        BackgroundColor="Transparent"
+                        TextColor="White"
+                        FontSize="22"
+                        WidthRequest="40"
+                        HeightRequest="40" />
+            </Grid>
+        </Border>
+
+        <!-- Content -->
+        <views:ChatListPage Grid.Row="1" BindingContext="{Binding ChatListViewModel}" />
+    </Grid>
+</ContentPage>
