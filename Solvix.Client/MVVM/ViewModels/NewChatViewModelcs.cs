@@ -112,7 +112,27 @@ namespace Solvix.Client.MVVM.ViewModels
             {
                 IsSearching = true;
 
+                // اول با حروف اصلی جستجو می‌کنیم
                 var users = await _userService.SearchUsersAsync(SearchQuery);
+
+                // اگر نتایج خالی بود، با حروف بزرگ امتحان می‌کنیم
+                if (users == null || users.Count == 0)
+                {
+                    users = await _userService.SearchUsersAsync(SearchQuery.ToUpperInvariant());
+                }
+
+                // اگر هنوز خالی بود، با حروف کوچک امتحان می‌کنیم
+                if (users == null || users.Count == 0)
+                {
+                    users = await _userService.SearchUsersAsync(SearchQuery.ToLowerInvariant());
+                }
+
+                // اگر هیچ کدام نتیجه نداد، با جانگذار * جستجو می‌کنیم
+                if (users == null || users.Count == 0 && SearchQuery.Length > 1)
+                {
+                    var wildcardQuery = SearchQuery.Insert(1, "*"); // مثلا 'A*AK' برای 'AAK'
+                    users = await _userService.SearchUsersAsync(wildcardQuery);
+                }
 
                 if (users != null)
                 {
@@ -166,7 +186,9 @@ namespace Solvix.Client.MVVM.ViewModels
 
             try
             {
-                await _toastService.ShowToastAsync($"Starting chat with {user.DisplayName}...", ToastType.Info);
+                await MainThread.InvokeOnMainThreadAsync(async () => {
+                    await _toastService.ShowToastAsync($"Starting chat with {user.DisplayName}...", ToastType.Info);
+                });
 
                 // Start a chat with this user
                 var chatId = await _chatService.StartChatAsync(user.Id);
@@ -174,21 +196,27 @@ namespace Solvix.Client.MVVM.ViewModels
                 if (chatId.HasValue)
                 {
                     // Navigate to the chat page
-                    var navigationParameter = new Dictionary<string, object>
-                    {
-                        { "ChatId", chatId.Value }
-                    };
+                    await MainThread.InvokeOnMainThreadAsync(async () => {
+                        var navigationParameter = new Dictionary<string, object>
+                {
+                    { "ChatId", chatId.Value.ToString() }
+                };
 
-                    await Shell.Current.GoToAsync($"{nameof(ChatPage)}", navigationParameter);
+                        await Shell.Current.GoToAsync($"{nameof(ChatPage)}", navigationParameter);
+                    });
                 }
                 else
                 {
-                    await _toastService.ShowToastAsync("Failed to start chat", ToastType.Error);
+                    await MainThread.InvokeOnMainThreadAsync(async () => {
+                        await _toastService.ShowToastAsync("Failed to start chat", ToastType.Error);
+                    });
                 }
             }
             catch (Exception ex)
             {
-                await _toastService.ShowToastAsync($"Error: {ex.Message}", ToastType.Error);
+                await MainThread.InvokeOnMainThreadAsync(async () => {
+                    await _toastService.ShowToastAsync($"Error: {ex.Message}", ToastType.Error);
+                });
             }
         }
 

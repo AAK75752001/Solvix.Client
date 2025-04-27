@@ -18,12 +18,34 @@ namespace Solvix.Client.Core.Services
         {
             try
             {
+                if (string.IsNullOrWhiteSpace(query))
+                    return new List<UserModel>();
+
                 var queryParams = new Dictionary<string, string>
-                {
-                    { "query", query }
-                };
+        {
+            { "query", query }
+        };
 
                 var response = await _apiService.GetAsync<List<UserModel>>(Constants.Endpoints.SearchUsers, queryParams);
+
+                // اگر نتیجه خالی بود، سعی کنیم جستجو را به صورت محلی انجام دهیم
+                if ((response == null || response.Count == 0) && query.Length >= 2)
+                {
+                    // دریافت همه کاربران آنلاین
+                    var allUsers = await GetOnlineUsersAsync();
+
+                    // فیلتر کردن کاربران بر اساس جستجو (صرف نظر از حروف بزرگ و کوچک)
+                    var searchQuery = query.ToLowerInvariant();
+                    var filteredUsers = allUsers.Where(u =>
+                        (u.FirstName != null && u.FirstName.ToLowerInvariant().Contains(searchQuery)) ||
+                        (u.LastName != null && u.LastName.ToLowerInvariant().Contains(searchQuery)) ||
+                        (u.PhoneNumber != null && u.PhoneNumber.Contains(query)) ||
+                        (u.Username != null && u.Username.ToLowerInvariant().Contains(searchQuery))
+                    ).ToList();
+
+                    return filteredUsers;
+                }
+
                 return response ?? new List<UserModel>();
             }
             catch (Exception ex)

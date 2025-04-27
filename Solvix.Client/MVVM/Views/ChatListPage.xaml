@@ -48,9 +48,9 @@
                      Command="{Binding RefreshCommand}">
             <Grid>
                 <CollectionView ItemsSource="{Binding FilteredChats}"
-                                SelectionMode="Single"
-                                SelectionChangedCommand="{Binding ChatSelectedCommand}"
-                                SelectionChangedCommandParameter="{Binding Source={RelativeSource Self}, Path=SelectedItem}">
+                   SelectionMode="Single"
+                   SelectionChangedCommand="{Binding ChatSelectedCommand}"
+                   SelectionChangedCommandParameter="{Binding Source={RelativeSource Self}, Path=SelectedItem}">
 
                     <CollectionView.ItemsLayout>
                         <LinearItemsLayout Orientation="Vertical" ItemSpacing="5" />
@@ -122,22 +122,22 @@
 
                                     <!-- Online indicator dot -->
                                     <Ellipse Grid.Column="0" 
-                                             Grid.Row="0"
-                                             IsVisible="{Binding OtherParticipant.IsOnline}"
-                                             Fill="{DynamicResource OnlineStatusColor}" 
-                                             HeightRequest="12" 
-                                             WidthRequest="12"
-                                             Stroke="{DynamicResource CardBackgroundColor}"
-                                             StrokeThickness="2"
-                                             HorizontalOptions="End"
-                                             VerticalOptions="Start" 
-                                             Margin="0,0,2,0"
-                                             ZIndex="1">
+         Grid.Row="0"
+         IsVisible="{Binding OtherParticipant.IsOnline, Mode=OneWay}"
+         Fill="{DynamicResource OnlineStatusColor}" 
+         HeightRequest="12" 
+         WidthRequest="12"
+         Stroke="{DynamicResource CardBackgroundColor}"
+         StrokeThickness="2"
+         HorizontalOptions="End"
+         VerticalOptions="Start" 
+         Margin="0,0,2,0"
+         ZIndex="1">
                                         <Ellipse.Shadow>
                                             <Shadow Brush="{DynamicResource OnlineStatusColor}"
-                                                    Offset="0,0"
-                                                    Opacity="0.5"
-                                                    Radius="5" />
+                Offset="0,0"
+                Opacity="0.5"
+                Radius="5" />
                                         </Ellipse.Shadow>
                                     </Ellipse>
 
@@ -205,27 +205,27 @@
 
                 <!-- Loading Indicator -->
                 <Border IsVisible="{Binding IsLoading}"
-                        HorizontalOptions="Center" 
-                        VerticalOptions="Center"
-                        StrokeThickness="0"
-                        StrokeShape="RoundRectangle 12,12,12,12"
-                        BackgroundColor="{DynamicResource CardBackgroundColor}"
-                        Padding="20">
+            HorizontalOptions="Center" 
+            VerticalOptions="Center"
+            StrokeThickness="0"
+            StrokeShape="RoundRectangle 12,12,12,12"
+            BackgroundColor="{DynamicResource CardBackgroundColor}"
+            Padding="20">
                     <Border.Shadow>
                         <Shadow Brush="{DynamicResource ShadowColor}"
-                                Offset="0,3"
-                                Opacity="0.2"
-                                Radius="10" />
+                    Offset="0,3"
+                    Opacity="0.2"
+                    Radius="10" />
                     </Border.Shadow>
                     <VerticalStackLayout Spacing="10">
-                        <ActivityIndicator IsRunning="{Binding IsLoading}" 
-                                           Color="{DynamicResource PrimaryColor}" 
-                                           HeightRequest="40" 
-                                           WidthRequest="40" />
+                        <ActivityIndicator IsRunning="True" 
+                              Color="{DynamicResource PrimaryColor}" 
+                              HeightRequest="40" 
+                              WidthRequest="40" />
                         <Label Text="Loading chats..." 
-                               TextColor="{DynamicResource PrimaryTextColor}" 
-                               FontSize="14" 
-                               HorizontalOptions="Center" />
+                  TextColor="{DynamicResource PrimaryTextColor}" 
+                  FontSize="14" 
+                  HorizontalOptions="Center" />
                     </VerticalStackLayout>
                 </Border>
             </Grid>

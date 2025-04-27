@@ -124,18 +124,18 @@
 
                                         <!-- Online Status -->
                                         <Frame Grid.Column="2"
-                                               BackgroundColor="{Binding IsOnline, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Color'}"
-                                               CornerRadius="12"
-                                               HeightRequest="24"
-                                               WidthRequest="24"
-                                               Padding="0"
-                                               VerticalOptions="Center"
-                                               HorizontalOptions="End">
-                                            <Label Text="{Binding IsOnline, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Text'}"
-                                                   TextColor="White"
-                                                   FontSize="14"
-                                                   VerticalOptions="Center"
-                                                   HorizontalOptions="Center" />
+       BackgroundColor="{Binding IsOnline, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Color', FallbackValue={StaticResource OfflineStatusColor}}"
+       CornerRadius="12"
+       HeightRequest="24"
+       WidthRequest="24"
+       Padding="0"
+       VerticalOptions="Center"
+       HorizontalOptions="End">
+                                            <Label Text="{Binding IsOnline, Converter={StaticResource BoolToVisibilityConverter}, ConverterParameter='Text', FallbackValue='○'}"
+           TextColor="White"
+           FontSize="14"
+           VerticalOptions="Center"
+           HorizontalOptions="Center" />
                                         </Frame>
                                     </Grid>
                                 </Frame>

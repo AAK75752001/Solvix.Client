@@ -134,8 +134,12 @@ namespace Solvix.Client.MVVM.ViewModels
 
             try
             {
-                IsLoading = true;
-                IsRefreshing = true;
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                {
+                    IsLoading = true;
+                    IsRefreshing = true;
+                });
+
                 _logger.LogInformation("Loading chats");
 
                 // Add timeout for loading chats
@@ -170,15 +174,43 @@ namespace Solvix.Client.MVVM.ViewModels
                     }
                 }
 
+                // پیش‌محاسبه خصوصیت‌های محاسباتی برای هر چت
+                foreach (var chat in chats)
+                {
+                    if (chat != null)
+                    {
+                        chat.InitializeComputedProperties();
+                    }
+                }
+
                 // Sort chats by last message time
-                var sortedChats = chats.OrderByDescending(c => c.LastMessageTime).ToList();
+                var sortedChats = chats
+                    .Where(c => c != null)
+                    .OrderByDescending(c => c.LastMessageTime ?? DateTime.MinValue)
+                    .ToList();
 
                 // Update UI on main thread
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
-                    Chats = new ObservableCollection<ChatModel>(sortedChats);
-                    OnPropertyChanged(nameof(HasChats));
-                    OnPropertyChanged(nameof(IsEmpty));
+                    try
+                    {
+                        Chats = new ObservableCollection<ChatModel>(sortedChats);
+                        FilterChats();
+
+                        // به‌روزرسانی صریح حالت‌های UI
+                        OnPropertyChanged(nameof(HasChats));
+                        OnPropertyChanged(nameof(IsEmpty));
+                        OnPropertyChanged(nameof(FilteredChats));
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error updating UI with chats");
+                    }
+                    finally
+                    {
+                        IsLoading = false;
+                        IsRefreshing = false;
+                    }
                 });
             }
             catch (Exception ex)
@@ -188,38 +220,72 @@ namespace Solvix.Client.MVVM.ViewModels
                 // Generate mock data for better UX
                 var mockChats = GenerateMockChats();
 
+                // پیش‌محاسبه خصوصیت‌های محاسباتی برای چت‌های مصنوعی
+                foreach (var chat in mockChats)
+                {
+                    if (chat != null)
+                    {
+                        chat.InitializeComputedProperties();
+                    }
+                }
+
                 // Update UI on main thread
                 await MainThread.InvokeOnMainThreadAsync(async () =>
                 {
-                    await _toastService.ShowToastAsync("Failed to load chats: " + ex.Message, ToastType.Error);
-                    Chats = new ObservableCollection<ChatModel>(mockChats);
+                    try
+                    {
+                        await _toastService.ShowToastAsync("Failed to load chats: " + ex.Message, ToastType.Error);
+                        Chats = new ObservableCollection<ChatModel>(mockChats);
+                        FilterChats();
+
+                        OnPropertyChanged(nameof(HasChats));
+                        OnPropertyChanged(nameof(IsEmpty));
+                        OnPropertyChanged(nameof(FilteredChats));
+                    }
+                    catch (Exception innerEx)
+                    {
+                        _logger.LogError(innerEx, "Error updating UI with mock chats");
+                    }
+                    finally
+                    {
+                        IsLoading = false;
+                        IsRefreshing = false;
+                    }
                 });
-            }
-            finally
-            {
-                IsLoading = false;
-                IsRefreshing = false;
             }
         }
 
         private void FilterChats()
         {
-            if (string.IsNullOrEmpty(SearchQuery))
+            try
             {
-                FilteredChats = new ObservableCollection<ChatModel>(Chats);
-            }
-            else
-            {
-                var filteredList = Chats.Where(c =>
-                    c.DisplayTitle.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ||
-                    (c.LastMessage != null && c.LastMessage.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)) ||
-                    c.Participants.Any(p =>
-                        (p.FirstName != null && p.FirstName.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)) ||
-                        (p.LastName != null && p.LastName.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)) ||
-                        (p.PhoneNumber != null && p.PhoneNumber.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)))
-                ).ToList();
+                if (string.IsNullOrEmpty(SearchQuery))
+                {
+                    FilteredChats = new ObservableCollection<ChatModel>(Chats);
+                }
+                else
+                {
+                    var filteredList = Chats.Where(c =>
+                        (c.DisplayTitle != null && c.DisplayTitle.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)) ||
+                        (c.LastMessage != null && c.LastMessage.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)) ||
+                        c.Participants.Any(p =>
+                            (p.FirstName != null && p.FirstName.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)) ||
+                            (p.LastName != null && p.LastName.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)) ||
+                            (p.PhoneNumber != null && p.PhoneNumber.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)))
+                    ).ToList();
 
-                FilteredChats = new ObservableCollection<ChatModel>(filteredList);
+                    FilteredChats = new ObservableCollection<ChatModel>(filteredList);
+                }
+
+                // صریحاً property changed را فراخوانی می‌کنیم
+                OnPropertyChanged(nameof(HasChats));
+                OnPropertyChanged(nameof(IsEmpty));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error filtering chats");
+                // در صورت خطا، همه چت‌ها را نمایش می‌دهیم
+                FilteredChats = new ObservableCollection<ChatModel>(Chats);
             }
         }
 

@@ -12,26 +12,48 @@ namespace Solvix.Client.Core.Models
         public string? LastMessage { get; set; }
         public DateTime? LastMessageTime { get; set; }
         public int UnreadCount { get; set; }
+        private UserModel _cachedOtherParticipant;
+        private string _cachedLastActivityStatus;
+        private bool _propertiesInitialized = false;
         public List<UserModel> Participants { get; set; } = new List<UserModel>();
 
         [JsonIgnore]
         public ObservableCollection<MessageModel> Messages { get; set; } = new ObservableCollection<MessageModel>();
 
         [JsonIgnore]
-        public UserModel? OtherParticipant
+        public UserModel OtherParticipant
         {
             get
             {
+                if (_propertiesInitialized && _cachedOtherParticipant != null)
+                    return _cachedOtherParticipant;
+
                 if (IsGroup || Participants == null || Participants.Count == 0)
                     return null;
 
-                // The first participant that isn't the current user
-                var currentUserId = SecureStorage.GetAsync(Constants.StorageKeys.UserId).Result;
+                try
+                {
+                    var currentUserIdTask = SecureStorage.GetAsync(Constants.StorageKeys.UserId);
+                    string currentUserId = null;
 
-                if (!long.TryParse(currentUserId, out var userId))
+                    // اجتناب از استفاده از await برای جلوگیری از مسدود شدن UI
+                    if (currentUserIdTask.IsCompleted)
+                        currentUserId = currentUserIdTask.Result;
+
+                    // اگر نتوانستیم ID کاربر را بگیریم، اولین شرکت‌کننده را برمی‌گردانیم
+                    if (string.IsNullOrEmpty(currentUserId) || !long.TryParse(currentUserId, out var userId))
+                        _cachedOtherParticipant = Participants.FirstOrDefault();
+                    else
+                        _cachedOtherParticipant = Participants.FirstOrDefault(p => p.Id != userId);
+
+                    _propertiesInitialized = true;
+                    return _cachedOtherParticipant;
+                }
+                catch
+                {
+                    // در صورت خطا، اولین شرکت‌کننده را برمی‌گردانیم
                     return Participants.FirstOrDefault();
-
-                return Participants.FirstOrDefault(p => p.Id != userId);
+                }
             }
         }
 
@@ -76,14 +98,71 @@ namespace Solvix.Client.Core.Models
         {
             get
             {
-                if (OtherParticipant?.IsOnline == true)
-                    return "Online";
+                try
+                {
+                    var other = OtherParticipant;
 
-                if (OtherParticipant?.LastActive.HasValue == true)
-                    return $"Last seen {OtherParticipant.LastActiveText}";
+                    if (other != null)
+                    {
+                        if (other.IsOnline)
+                            return "Online";
+                        else if (other.LastActive.HasValue)
+                            return $"Last seen {other.LastActiveText}";
+                    }
 
-                return string.Empty;
+                    return string.Empty;
+                }
+                catch
+                {
+                    return string.Empty;
+                }
             }
         }
+
+        public void InitializeComputedProperties()
+        {
+            _propertiesInitialized = false;
+            // این باعث می‌شود خصوصیت‌های محاسباتی یک‌بار محاسبه شوند و کش شوند
+            var dummy1 = OtherParticipant;
+            var dummy2 = LastActivityStatus;
+        }
+
+
+        public void InternalInitializeComputedProperties()
+        {
+            try
+            {
+                // محاسبه مقادیر پیش‌محاسبه شده
+                var otherParticipant = this.OtherParticipant;
+                var displayTitle = this.DisplayTitle;
+                var lastActivityStatus = this.LastActivityStatus;
+                var lastMessageTimeFormatted = this.LastMessageTimeFormatted;
+            }
+            catch (Exception ex)
+            {
+                // فقط لاگ خطا بدون پرتاب استثنا
+                System.Diagnostics.Debug.WriteLine($"Error initializing computed properties: {ex.Message}");
+            }
+        }
+
+        // کامپوننت جدید برای بهبود UX و نمایش انیمیشن
+        //public static class UXUtilities
+        //{
+        //    // انیمیشن کمرنگ شدن و از بین رفتن
+        //    public static async Task FadeOutAsync(this VisualElement element, uint duration = 250, Easing easing = null)
+        //    {
+        //        await element.FadeTo(0, duration, easing ?? Easing.CubicIn);
+        //        element.IsVisible = false;
+        //    }
+
+        //    // انیمیشن پررنگ شدن و ظاهر شدن
+        //    public static async Task FadeInAsync(this VisualElement element, uint duration = 250, Easing easing = null)
+        //    {
+        //        element.Opacity = 0;
+        //        element.IsVisible = true;
+        //        await element.FadeTo(1, duration, easing ?? Easing.CubicOut);
+        //    }
+        //}
+
     }
 }

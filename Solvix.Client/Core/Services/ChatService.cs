@@ -29,7 +29,6 @@ namespace Solvix.Client.Core.Services
             {
                 _logger.LogInformation("Fetching chats");
 
-                // Use mock data temporarily for testing UI if needed
 #if DEBUG
                 if (Constants.BaseApiUrl.Contains("localhost"))
                 {
@@ -46,6 +45,17 @@ namespace Solvix.Client.Core.Services
                     return new List<ChatModel>();
                 }
 
+                // اطمینان حاصل کنیم که هر چت valid است و آماده‌سازی خصوصیت‌های محاسباتی
+                foreach (var chat in response)
+                {
+                    if (chat != null)
+                    {
+                        // مطمئن شوید که هر چت حداقل یک لیست Participants و Messages خالی دارد، نه null
+                        chat.Participants = chat.Participants ?? new List<UserModel>();
+                        chat.Messages = chat.Messages ?? new System.Collections.ObjectModel.ObservableCollection<MessageModel>();
+                    }
+                }
+
                 _logger.LogInformation("Successfully retrieved {Count} chats", response.Count);
                 return response;
             }
@@ -54,7 +64,7 @@ namespace Solvix.Client.Core.Services
                 _logger.LogError(ex, "Failed to load chats");
                 await _toastService.ShowToastAsync("Failed to load chats: " + ex.Message, ToastType.Error);
 
-                // Return empty list for UI to show empty state
+                // برگرداندن لیست خالی برای جلوگیری از خطای null
                 return new List<ChatModel>();
             }
         }
@@ -112,7 +122,6 @@ namespace Solvix.Client.Core.Services
             {
                 _logger.LogInformation("Starting chat with user {UserId}", userId);
 
-                // Use mock data temporarily for testing UI
 #if DEBUG
                 if (Constants.BaseApiUrl.Contains("localhost"))
                 {
@@ -124,21 +133,39 @@ namespace Solvix.Client.Core.Services
 
                 if (response != null)
                 {
-                    Guid chatId = response.chatId;
-                    bool alreadyExists = response.alreadyExists;
-
-                    if (alreadyExists)
+                    try
                     {
-                        _logger.LogInformation("Returning to existing chat {ChatId}", chatId);
-                        await _toastService.ShowToastAsync("Returning to existing conversation", ToastType.Info);
-                    }
-                    else
-                    {
-                        _logger.LogInformation("New chat started with ID {ChatId}", chatId);
-                        await _toastService.ShowToastAsync("New conversation started", ToastType.Success);
-                    }
+                        // تبدیل صریح به نوع مورد نیاز بدون استفاده از عملگر !=
+                        string chatIdStr = response.chatId.ToString();
+                        bool alreadyExists = false;
 
-                    return chatId;
+                        if (response.alreadyExists != null)
+                        {
+                            bool.TryParse(response.alreadyExists.ToString(), out alreadyExists);
+                        }
+
+                        if (Guid.TryParse(chatIdStr, out Guid chatId))
+                        {
+                            if (alreadyExists)
+                            {
+                                _logger.LogInformation("Returning to existing chat {ChatId}", chatId);
+                                await _toastService.ShowToastAsync("Returning to existing conversation", ToastType.Info);
+                            }
+                            else
+                            {
+                                _logger.LogInformation("New chat started with ID {ChatId}", chatId);
+                                await _toastService.ShowToastAsync("New conversation started", ToastType.Success);
+                            }
+
+                            return chatId;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error parsing chat start response for user {UserId}", userId);
+                        await _toastService.ShowToastAsync("Error starting chat: " + ex.Message, ToastType.Error);
+                        return null;
+                    }
                 }
                 else
                 {
