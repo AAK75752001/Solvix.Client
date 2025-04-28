@@ -216,15 +216,26 @@ namespace Solvix.Client.Core.Services
         {
             try
             {
+                // First check cache if skip is 0 (initial load)
+                if (skip == 0)
+                {
+                    var cachedMessages = MessageCache.GetCachedMessages(chatId);
+                    if (cachedMessages != null && cachedMessages.Count > 0)
+                    {
+                        _logger.LogInformation("Using cached messages for chat {ChatId}", chatId);
+                        return cachedMessages;
+                    }
+                }
+
                 _logger.LogInformation("Fetching messages for chat {ChatId}, skip={Skip}, take={Take}",
                     chatId, skip, take);
 
                 var endpoint = $"{Constants.Endpoints.GetMessages}/{chatId}/messages";
                 var queryParams = new Dictionary<string, string>
-                {
-                    { "skip", skip.ToString() },
-                    { "take", take.ToString() }
-                };
+        {
+            { "skip", skip.ToString() },
+            { "take", take.ToString() }
+        };
 
                 var messages = await _apiService.GetAsync<List<MessageModel>>(endpoint, queryParams);
 
@@ -241,6 +252,7 @@ namespace Solvix.Client.Core.Services
                     {
                         // Check if this is the current user's message
                         bool isOwnMessage = message.SenderId == currentUserId;
+                        message.IsOwnMessage = isOwnMessage;
 
                         if (isOwnMessage)
                         {
@@ -254,6 +266,12 @@ namespace Solvix.Client.Core.Services
                         message.SentAtFormatted = FormatMessageTime(message.SentAt);
                     }
 
+                    // Cache the messages if this is the initial load
+                    if (skip == 0)
+                    {
+                        MessageCache.CacheMessages(chatId, messages);
+                    }
+
                     return messages;
                 }
                 else
@@ -265,7 +283,6 @@ namespace Solvix.Client.Core.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to load messages for chat {ChatId}", chatId);
-                await _toastService.ShowToastAsync("Failed to load messages: " + ex.Message, ToastType.Error);
                 return new List<MessageModel>();
             }
         }

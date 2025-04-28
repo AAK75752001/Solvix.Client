@@ -6,6 +6,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
+using Solvix.Client.Core.Services;
 
 namespace Solvix.Client.MVVM.ViewModels
 {
@@ -173,92 +174,110 @@ namespace Solvix.Client.MVVM.ViewModels
             if (!Guid.TryParse(ChatId, out var chatGuid))
             {
                 _logger.LogError("Invalid ChatId format: {ChatId}", ChatId);
-                await _toastService.ShowToastAsync("شناسه چت نامعتبر است", ToastType.Error);
+                await MainThread.InvokeOnMainThreadAsync(async () =>
+                    await _toastService.ShowToastAsync("Invalid chat ID", ToastType.Error));
                 return;
             }
 
             try
             {
+                // Show loading indicator on UI thread
                 await MainThread.InvokeOnMainThreadAsync(() => IsLoading = true);
 
-                _logger.LogInformation("Loading chat with ID: {ChatId}", chatGuid);
-
-                // First load chat details
-                var chat = await _chatService.GetChatAsync(chatGuid);
-                if (chat == null)
-                {
-                    _logger.LogWarning("Chat not found: {ChatId}", chatGuid);
-                    await MainThread.InvokeOnMainThreadAsync(async () =>
-                    {
-                        IsLoading = false;
-                        await _toastService.ShowToastAsync("چت یافت نشد", ToastType.Error);
-                    });
-                    return;
-                }
-
-                // Then load messages
-                var messages = await _chatService.GetMessagesAsync(chatGuid);
-                _logger.LogInformation("Loaded {Count} messages for chat {ChatId}",
-                    messages?.Count ?? 0, chatGuid);
-
-                await MainThread.InvokeOnMainThreadAsync(() =>
+                // Run data fetching operations in background
+                await Task.Run(async () =>
                 {
                     try
                     {
-                        // Set the chat
-                        Chat = chat;
+                        _logger.LogInformation("Loading chat with ID: {ChatId}", chatGuid);
 
-                        // Clear any existing messages
-                        if (chat.Messages == null)
+                        // First load chat details
+                        var chat = await _chatService.GetChatAsync(chatGuid);
+                        if (chat == null)
                         {
-                            chat.Messages = new ObservableCollection<MessageModel>();
-                        }
-                        else
-                        {
-                            chat.Messages.Clear();
-                        }
-
-                        // Add loaded messages to the chat
-                        if (messages != null && messages.Count > 0)
-                        {
-                            foreach (var message in messages)
+                            _logger.LogWarning("Chat not found: {ChatId}", chatGuid);
+                            await MainThread.InvokeOnMainThreadAsync(async () =>
                             {
-                                chat.Messages.Add(message);
-                            }
-
-                            // Update our view model's message collection
-                            Messages = new ObservableCollection<MessageModel>(messages);
-                            NoMessages = false;
-
-                            _logger.LogInformation("Added {Count} messages to UI", messages.Count);
+                                IsLoading = false;
+                                await _toastService.ShowToastAsync("Chat not found", ToastType.Error);
+                            });
+                            return;
                         }
-                        else
+
+                        // Then load messages (now using cache if available)
+                        var messages = await _chatService.GetMessagesAsync(chatGuid);
+                        _logger.LogInformation("Loaded {Count} messages for chat {ChatId}",
+                            messages?.Count ?? 0, chatGuid);
+
+                        // Update UI on main thread
+                        await MainThread.InvokeOnMainThreadAsync(() =>
                         {
-                            NoMessages = true;
-                            _logger.LogWarning("No messages to display");
-                        }
+                            try
+                            {
+                                // Set the chat
+                                Chat = chat;
 
-                        // Set loading to false
-                        IsLoading = false;
+                                // Clear any existing messages
+                                if (chat.Messages == null)
+                                {
+                                    chat.Messages = new ObservableCollection<MessageModel>();
+                                }
+                                else
+                                {
+                                    chat.Messages.Clear();
+                                }
 
-                        // Mark unread messages as read
-                        MarkUnreadMessagesAsReadAsync().ConfigureAwait(false);
+                                // Add loaded messages to the chat
+                                if (messages != null && messages.Count > 0)
+                                {
+                                    foreach (var message in messages)
+                                    {
+                                        chat.Messages.Add(message);
+                                    }
+
+                                    // Update our view model's message collection
+                                    Messages = new ObservableCollection<MessageModel>(messages);
+                                    NoMessages = false;
+
+                                    _logger.LogInformation("Added {Count} messages to UI", messages.Count);
+                                }
+                                else
+                                {
+                                    NoMessages = true;
+                                    _logger.LogWarning("No messages to display");
+                                }
+
+                                // Set loading to false
+                                IsLoading = false;
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Error processing loaded chat data");
+                                IsLoading = false;
+                            }
+                        });
+
+                        // Mark unread messages as read in background
+                        Task.Run(() => MarkUnreadMessagesAsReadAsync());
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Error processing loaded chat data");
-                        IsLoading = false;
+                        _logger.LogError(ex, "Error in background chat loading for {ChatId}", chatGuid);
+                        await MainThread.InvokeOnMainThreadAsync(() =>
+                        {
+                            IsLoading = false;
+                            _toastService.ShowToastAsync("Error loading chat", ToastType.Error);
+                        });
                     }
                 });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error loading chat {ChatId}", chatGuid);
-
-                await MainThread.InvokeOnMainThreadAsync(async () =>
+                await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     IsLoading = false;
-                    await _toastService.ShowToastAsync($"خطا در بارگیری چت: {ex.Message}", ToastType.Error);
+                    _toastService.ShowToastAsync($"Error loading chat: {ex.Message}", ToastType.Error);
                 });
             }
         }
@@ -312,7 +331,13 @@ namespace Solvix.Client.MVVM.ViewModels
                 return;
 
             string messageText = MessageText.Trim();
-            MessageText = string.Empty;
+
+            // Clear message input immediately for better UX
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                MessageText = string.Empty;
+                OnPropertyChanged(nameof(MessageText));
+            });
 
             try
             {
@@ -329,19 +354,17 @@ namespace Solvix.Client.MVVM.ViewModels
                     SentAt = DateTime.UtcNow,
                     ChatId = chatGuid,
                     SenderId = await _chatService.GetCurrentUserIdAsync(),
-                    SenderName = "شما", // Will be replaced by server response
+                    SenderName = "You", // Will be replaced by server response
                     Status = Constants.MessageStatus.Sending,
-                    SentAtFormatted = DateTime.UtcNow.ToString("HH:mm")
+                    SentAtFormatted = DateTime.UtcNow.ToString("HH:mm"),
+                    IsOwnMessage = true // Explicitly set this to true for UI
                 };
 
                 // Add to local messages immediately
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     // Add to chat messages collection
-                    if (Chat.Messages == null)
-                    {
-                        Chat.Messages = new ObservableCollection<MessageModel>();
-                    }
+                    Chat.Messages ??= new ObservableCollection<MessageModel>();
                     Chat.Messages.Add(tempMessage);
 
                     // Add to view model's messages collection
@@ -352,13 +375,27 @@ namespace Solvix.Client.MVVM.ViewModels
                     OnPropertyChanged(nameof(Messages));
                 });
 
-                // Send the message to the server
-                var message = await _chatService.SendMessageAsync(chatGuid, messageText);
+                // Send the message to the server (in background)
+                MessageModel message = null;
+                await Task.Run(async () =>
+                {
+                    try
+                    {
+                        message = await _chatService.SendMessageAsync(chatGuid, messageText);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Background message sending failed");
+                    }
+                });
 
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     if (message != null)
                     {
+                        // Ensure the received message has IsOwnMessage=true
+                        message.IsOwnMessage = true;
+
                         // Try to find and remove the temporary message
                         var tempMsg = Messages.FirstOrDefault(m => m.Id == tempMessage.Id);
                         if (tempMsg != null)
@@ -380,12 +417,12 @@ namespace Solvix.Client.MVVM.ViewModels
                         Messages.Add(message);
 
                         // Also add to chat's messages
-                        if (Chat?.Messages != null)
-                        {
-                            Chat.Messages.Add(message);
-                        }
+                        Chat?.Messages?.Add(message);
 
                         _logger.LogInformation("Message sent successfully, server ID: {MessageId}", message.Id);
+
+                        // Invalidate cache since we have new message
+                        MessageCache.InvalidateCache(chatGuid);
                     }
                     else
                     {
@@ -397,7 +434,7 @@ namespace Solvix.Client.MVVM.ViewModels
                         }
 
                         _logger.LogWarning("Failed to send message");
-                        _toastService.ShowToastAsync("پیام ارسال نشد", ToastType.Error)
+                        _toastService.ShowToastAsync("Failed to send message", ToastType.Error)
                             .ConfigureAwait(false);
                     }
 
@@ -409,10 +446,10 @@ namespace Solvix.Client.MVVM.ViewModels
             {
                 _logger.LogError(ex, "Error sending message");
 
-                await MainThread.InvokeOnMainThreadAsync(async () =>
+                await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     IsSending = false;
-                    await _toastService.ShowToastAsync($"خطا در ارسال پیام: {ex.Message}", ToastType.Error);
+                    _toastService.ShowToastAsync($"Error sending message: {ex.Message}", ToastType.Error);
                 });
             }
         }

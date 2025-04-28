@@ -14,6 +14,7 @@ namespace Solvix.Client.Core.Models
         public DateTime? ReadAt { get; set; }
         public bool IsEdited { get; set; }
         public DateTime? EditedAt { get; set; }
+        private bool? _isOwnMessage;
 
         // Local properties for UI
         [JsonIgnore]
@@ -39,6 +40,9 @@ namespace Solvix.Client.Core.Models
         {
             get
             {
+                if (_isOwnMessage.HasValue)
+                    return _isOwnMessage.Value;
+
                 try
                 {
                     var currentUserIdTask = SecureStorage.GetAsync(Constants.StorageKeys.UserId);
@@ -46,30 +50,37 @@ namespace Solvix.Client.Core.Models
                     if (currentUserIdTask.IsCompleted)
                     {
                         var currentUserId = currentUserIdTask.Result;
-                        return !string.IsNullOrEmpty(currentUserId) &&
-                               long.TryParse(currentUserId, out var userId) &&
-                               userId == SenderId;
+                        _isOwnMessage = !string.IsNullOrEmpty(currentUserId) &&
+                                       long.TryParse(currentUserId, out var userId) &&
+                                       userId == SenderId;
+                        return _isOwnMessage.Value;
                     }
 
                     // If the task is not completed yet, we have a small timeout
                     var timeoutTask = Task.Delay(300); // 300ms timeout
-                    if (Task.WhenAny(currentUserIdTask, timeoutTask).Result == currentUserIdTask)
+                    Task.WhenAny(currentUserIdTask, timeoutTask).Wait(); // Use Wait here to be synchronous
+
+                    if (currentUserIdTask.IsCompleted)
                     {
                         var currentUserId = currentUserIdTask.Result;
-                        return !string.IsNullOrEmpty(currentUserId) &&
-                               long.TryParse(currentUserId, out var userId) &&
-                               userId == SenderId;
+                        _isOwnMessage = !string.IsNullOrEmpty(currentUserId) &&
+                                       long.TryParse(currentUserId, out var userId) &&
+                                       userId == SenderId;
+                        return _isOwnMessage.Value;
                     }
 
                     // Default to false if we can't determine
+                    _isOwnMessage = false;
                     return false;
                 }
                 catch
                 {
                     // In case of any error, default to false
+                    _isOwnMessage = false;
                     return false;
                 }
             }
+            set => _isOwnMessage = value;
         }
 
         [JsonIgnore]

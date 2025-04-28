@@ -137,43 +137,43 @@
                 <DataTemplate x:DataType="models:MessageModel">
                     <Grid Padding="10,5">
                         <Border BackgroundColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='Color'}"
-                                StrokeThickness="0"
-                                StrokeShape="RoundRectangle 18,18,18,2"
-                                Padding="15,10"
-                                HorizontalOptions="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}}"
-                                MaximumWidthRequest="300">
+                StrokeThickness="0"
+                StrokeShape="RoundRectangle 18,18,18,2"
+                Padding="15,10"
+                HorizontalOptions="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}}"
+                MaximumWidthRequest="300">
                             <Border.Shadow>
                                 <Shadow Brush="{DynamicResource ShadowColor}"
-                                        Offset="0,2"
-                                        Opacity="0.1"
-                                        Radius="3" />
+                        Offset="0,2"
+                        Opacity="0.1"
+                        Radius="3" />
                             </Border.Shadow>
 
                             <Grid RowDefinitions="*,Auto">
                                 <!-- Message Content -->
                                 <Label Grid.Row="0" 
-                                       Text="{Binding Content}" 
-                                       TextColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='TextColor'}" 
-                                       FontSize="16"
-                                       LineBreakMode="WordWrap"
-                                       Margin="0,0,0,5" />
+                       Text="{Binding Content}" 
+                       TextColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='TextColor'}" 
+                       FontSize="16"
+                       LineBreakMode="WordWrap"
+                       Margin="0,0,0,5" />
 
                                 <!-- Time and Status -->
                                 <HorizontalStackLayout Grid.Row="1" 
-                                                       Spacing="5"
-                                                       HorizontalOptions="End">
+                                       Spacing="5"
+                                       HorizontalOptions="End">
                                     <Label Text="{Binding TimeText}" 
-                                           TextColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='SecondaryTextColor'}" 
-                                           FontSize="12"
-                                           VerticalOptions="Center" />
+                           TextColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='SecondaryTextColor'}" 
+                           FontSize="12"
+                           VerticalOptions="Center" />
 
                                     <!-- Status Icon (Only for own messages) -->
                                     <Label Text="{Binding StatusIcon}"
-                                           IsVisible="{Binding IsOwnMessage}"
-                                           TextColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='SecondaryTextColor'}" 
-                                           FontSize="16"
-                                           FontFamily="MaterialIcons"
-                                           VerticalOptions="Center" />
+                           IsVisible="{Binding IsOwnMessage}"
+                           TextColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='SecondaryTextColor'}" 
+                           FontSize="16"
+                           FontFamily="MaterialIcons"
+                           VerticalOptions="Center" />
                                 </HorizontalStackLayout>
                             </Grid>
                         </Border>

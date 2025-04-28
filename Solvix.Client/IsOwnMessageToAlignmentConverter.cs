@@ -22,18 +22,7 @@ namespace Solvix.Client
                         : Application.Current.Resources["ReceivedMessageTextColor"];
                 }
 
-                if (parameter != null && parameter.ToString() == "SecondaryTextColor")
-                {
-                    // Fix for color conversion issue
-                    if (Application.Current.Resources["SentMessageTextColor"] is Color sentColor &&
-                        Application.Current.Resources["ReceivedMessageTextColor"] is Color receivedColor)
-                    {
-                        return isOwnMessage
-                            ? new Color(sentColor.Red, sentColor.Green, sentColor.Blue, 0.7f)
-                            : new Color(receivedColor.Red, receivedColor.Green, receivedColor.Blue, 0.7f);
-                    }
-                }
-
+                // For alignment, explicitly return LayoutOptions.End for own messages, Start for others
                 return isOwnMessage ? LayoutOptions.End : LayoutOptions.Start;
             }
 
