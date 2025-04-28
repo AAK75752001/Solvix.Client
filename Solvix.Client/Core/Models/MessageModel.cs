@@ -20,6 +20,9 @@ namespace Solvix.Client.Core.Models
         public int Status { get; set; } = Constants.MessageStatus.Sending;
 
         [JsonIgnore]
+        public string SentAtFormatted { get; set; } = string.Empty;
+
+        [JsonIgnore]
         public bool IsSent => Status >= Constants.MessageStatus.Sent;
 
         [JsonIgnore]
@@ -38,10 +41,8 @@ namespace Solvix.Client.Core.Models
             {
                 try
                 {
-                    // Get the current user ID from secure storage
                     var currentUserIdTask = SecureStorage.GetAsync(Constants.StorageKeys.UserId);
 
-                    // If the task is already completed, get the result directly
                     if (currentUserIdTask.IsCompleted)
                     {
                         var currentUserId = currentUserIdTask.Result;
@@ -50,9 +51,8 @@ namespace Solvix.Client.Core.Models
                                userId == SenderId;
                     }
 
-                    // If the task is not completed yet, we have to make a synchronous wait
-                    // This is not ideal but necessary for this property
-                    var timeoutTask = Task.Delay(500); // 500ms timeout
+                    // If the task is not completed yet, we have a small timeout
+                    var timeoutTask = Task.Delay(300); // 300ms timeout
                     if (Task.WhenAny(currentUserIdTask, timeoutTask).Result == currentUserIdTask)
                     {
                         var currentUserId = currentUserIdTask.Result;
@@ -61,7 +61,7 @@ namespace Solvix.Client.Core.Models
                                userId == SenderId;
                     }
 
-                    // If we timed out, return false (safer default)
+                    // Default to false if we can't determine
                     return false;
                 }
                 catch
@@ -73,13 +73,9 @@ namespace Solvix.Client.Core.Models
         }
 
         [JsonIgnore]
-        public string TimeText
-        {
-            get
-            {
-                return SentAt.ToString("HH:mm");
-            }
-        }
+        public string TimeText => string.IsNullOrEmpty(SentAtFormatted)
+            ? SentAt.ToString("HH:mm")
+            : SentAtFormatted;
 
         [JsonIgnore]
         public string StatusIcon

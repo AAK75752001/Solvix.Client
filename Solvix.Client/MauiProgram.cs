@@ -69,7 +69,7 @@ namespace Solvix.Client
             services.AddSingleton<ISecureStorageService, SecureStorageService>();
             services.AddSingleton<IConnectivityService, ConnectivityService>();
             services.AddSingleton<ISettingsService, SettingsService>();
-            services.AddSingleton<IToastService, ToastService>();
+            services.AddSingleton<IToastService, ImprovedToastService>();
 
             // API-related services
             services.AddSingleton<IApiService, ApiService>();

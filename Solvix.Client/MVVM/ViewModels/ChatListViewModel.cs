@@ -6,8 +6,6 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
-using Microsoft.Maui.ApplicationModel;
-using Microsoft.Maui.Controls;
 
 namespace Solvix.Client.MVVM.ViewModels
 {
@@ -16,6 +14,7 @@ namespace Solvix.Client.MVVM.ViewModels
         private readonly IChatService _chatService;
         private readonly ISignalRService _signalRService;
         private readonly IToastService _toastService;
+        private readonly IUserService _userService;
         private readonly ILogger<ChatListViewModel> _logger;
 
         private bool _isLoading;
@@ -23,6 +22,7 @@ namespace Solvix.Client.MVVM.ViewModels
         private string _searchQuery = string.Empty;
         private ObservableCollection<ChatModel> _chats = new();
         private ObservableCollection<ChatModel> _filteredChats = new();
+        private readonly Dictionary<long, bool> _userOnlineStatus = new();
 
         public bool IsLoading
         {
@@ -106,11 +106,13 @@ namespace Solvix.Client.MVVM.ViewModels
             IChatService chatService,
             ISignalRService signalRService,
             IToastService toastService,
+            IUserService userService,
             ILogger<ChatListViewModel> logger)
         {
             _chatService = chatService;
             _signalRService = signalRService;
             _toastService = toastService;
+            _userService = userService;
             _logger = logger;
 
             RefreshCommand = new Command(async () => await LoadChatsAsync());
@@ -123,8 +125,11 @@ namespace Solvix.Client.MVVM.ViewModels
             _signalRService.OnMessageRead += OnMessageRead;
             _signalRService.OnUserStatusChanged += OnUserStatusChanged;
 
-            // Initial load - don't wait for it
-            Task.Run(async () => await LoadChatsAsync());
+            // Initial load
+            LoadChatsAsync().ConfigureAwait(false);
+
+            // Also load online users
+            LoadOnlineUsersAsync().ConfigureAwait(false);
 
             // Initialize with some empty data to prevent UI issues
             FilteredChats = new ObservableCollection<ChatModel>();
@@ -144,106 +149,133 @@ namespace Solvix.Client.MVVM.ViewModels
 
                 _logger.LogInformation("Loading chats");
 
-                // Add timeout for loading chats
-                var loadTask = _chatService.GetChatsAsync();
-                var timeoutTask = Task.Delay(7000); // 7-second timeout
+                var chats = await _chatService.GetChatsAsync();
 
-                var completedTask = await Task.WhenAny(loadTask, timeoutTask);
+                // Apply known online statuses from our cache
+                await ApplyOnlineStatusesToChatsAsync(chats);
 
-                List<ChatModel> chats;
-                if (completedTask == timeoutTask)
+                // If we have chats, prepare them for display
+                if (chats != null && chats.Count > 0)
                 {
-                    _logger.LogWarning("Loading chats timed out - using mock data");
-                    // Timeout occurred, use mock data
-                    chats = GenerateMockChats();
+                    // Sort chats by last message time
+                    var sortedChats = chats
+                        .OrderByDescending(c => c.LastMessageTime ?? DateTime.MinValue)
+                        .ToList();
 
-                    // Show warning on UI thread
-                    await MainThread.InvokeOnMainThreadAsync(async () =>
+                    // Update the UI
+                    await MainThread.InvokeOnMainThreadAsync(() =>
                     {
-                        await _toastService.ShowToastAsync("Connection timed out. Using offline data.", ToastType.Warning);
+                        Chats = new ObservableCollection<ChatModel>(sortedChats);
+                        FilterChats();
                     });
                 }
                 else
                 {
-                    // Task completed successfully
-                    chats = await loadTask;
-
-                    // If no chats were returned, use mock data
-                    if (chats == null || chats.Count == 0)
+                    _logger.LogWarning("No chats returned");
+                    await MainThread.InvokeOnMainThreadAsync(() =>
                     {
-                        _logger.LogInformation("No chats returned - using mock data for better UI");
-                        chats = GenerateMockChats();
-                    }
-                }
-
-                // Pre-compute calculated properties for each chat
-                foreach (var chat in chats)
-                {
-                    if (chat != null)
-                    {
-                        chat.InitializeComputedProperties();
-                    }
-                }
-
-                // Sort chats by last message time
-                var sortedChats = chats
-                    .Where(c => c != null)
-                    .OrderByDescending(c => c.LastMessageTime ?? DateTime.MinValue)
-                    .ToList();
-
-                // Update UI on main thread
-                await MainThread.InvokeOnMainThreadAsync(() =>
-                {
-                    try
-                    {
-                        Chats = new ObservableCollection<ChatModel>(sortedChats);
+                        Chats = new ObservableCollection<ChatModel>();
                         FilterChats();
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error updating UI with chats");
-                    }
-                    finally
-                    {
-                        IsLoading = false;
-                        IsRefreshing = false;
-                    }
-                });
+                    });
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to load chats");
-
-                // Generate mock data for better UX
-                var mockChats = GenerateMockChats();
-
-                // Pre-compute calculated properties for mock chats
-                foreach (var chat in mockChats)
+                await _toastService.ShowToastAsync($"Error loading chats: {ex.Message}", ToastType.Error);
+            }
+            finally
+            {
+                await MainThread.InvokeOnMainThreadAsync(() =>
                 {
-                    if (chat != null)
+                    IsLoading = false;
+                    IsRefreshing = false;
+                });
+            }
+        }
+
+        private async Task LoadOnlineUsersAsync()
+        {
+            try
+            {
+                // Get currently online users
+                var onlineUsers = await _userService.GetOnlineUsersAsync();
+
+                // Update the status cache
+                if (onlineUsers != null)
+                {
+                    // First set all users to offline
+                    _userOnlineStatus.Clear();
+
+                    // Then mark online users as online
+                    foreach (var user in onlineUsers)
                     {
-                        chat.InitializeComputedProperties();
+                        _userOnlineStatus[user.Id] = true;
+                    }
+
+                    _logger.LogInformation("Loaded {Count} online users", onlineUsers.Count);
+
+                    // Apply the status to any loaded chats
+                    await ApplyOnlineStatusesToChatsAsync(Chats);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to load online users");
+            }
+        }
+
+        private async Task ApplyOnlineStatusesToChatsAsync(IEnumerable<ChatModel> chats)
+        {
+            if (chats == null) return;
+
+            bool updatedAny = false;
+
+            foreach (var chat in chats)
+            {
+                if (chat.Participants != null)
+                {
+                    foreach (var participant in chat.Participants)
+                    {
+                        // Skip current user - they're always "online" from their perspective
+                        if (participant.Id == await _chatService.GetCurrentUserIdAsync())
+                            continue;
+
+                        // Only update if we have a status for this user
+                        if (_userOnlineStatus.TryGetValue(participant.Id, out bool isOnline))
+                        {
+                            if (participant.IsOnline != isOnline)
+                            {
+                                participant.IsOnline = isOnline;
+                                updatedAny = true;
+
+                                _logger.LogDebug("Updated online status for user {UserId} to {IsOnline}",
+                                    participant.Id, isOnline);
+                            }
+                        }
+                        else
+                        {
+                            // If we don't have a status, assume offline
+                            if (participant.IsOnline)
+                            {
+                                participant.IsOnline = false;
+                                updatedAny = true;
+
+                                _logger.LogDebug("Set user {UserId} to offline (not found in online users)",
+                                    participant.Id);
+                            }
+                        }
                     }
                 }
+            }
 
-                // Update UI on main thread
-                await MainThread.InvokeOnMainThreadAsync(async () =>
+            // If we updated any status, refresh the UI
+            if (updatedAny)
+            {
+                await MainThread.InvokeOnMainThreadAsync(() =>
                 {
-                    try
-                    {
-                        await _toastService.ShowToastAsync("Failed to load chats: " + ex.Message, ToastType.Error);
-                        Chats = new ObservableCollection<ChatModel>(mockChats);
-                        FilterChats();
-                    }
-                    catch (Exception innerEx)
-                    {
-                        _logger.LogError(innerEx, "Error updating UI with mock chats");
-                    }
-                    finally
-                    {
-                        IsLoading = false;
-                        IsRefreshing = false;
-                    }
+                    OnPropertyChanged(nameof(Chats));
+                    OnPropertyChanged(nameof(FilteredChats));
                 });
             }
         }
@@ -252,46 +284,32 @@ namespace Solvix.Client.MVVM.ViewModels
         {
             try
             {
-                // Log online status of each user in each chat
-                foreach (var chat in Chats)
-                {
-                    foreach (var participant in chat.Participants)
-                    {
-                        _logger.LogDebug("User {UserId} ({Username}) in chat {ChatId}: IsOnline = {IsOnline}",
-                            participant.Id,
-                            participant.Username,
-                            chat.Id,
-                            participant.IsOnline);
-                    }
-                }
-
                 if (string.IsNullOrEmpty(SearchQuery))
                 {
                     FilteredChats = new ObservableCollection<ChatModel>(Chats);
                 }
                 else
                 {
+                    var query = SearchQuery.Trim().ToLowerInvariant();
                     var filteredList = Chats.Where(c =>
-                        (c.DisplayTitle != null && c.DisplayTitle.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)) ||
-                        (c.LastMessage != null && c.LastMessage.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)) ||
+                        (c.DisplayTitle?.ToLowerInvariant().Contains(query) ?? false) ||
+                        (c.LastMessage?.ToLowerInvariant().Contains(query) ?? false) ||
                         c.Participants.Any(p =>
-                            (p.FirstName != null && p.FirstName.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)) ||
-                            (p.LastName != null && p.LastName.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)) ||
-                            (p.PhoneNumber != null && p.PhoneNumber.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase)))
+                            (p.FirstName?.ToLowerInvariant().Contains(query) ?? false) ||
+                            (p.LastName?.ToLowerInvariant().Contains(query) ?? false) ||
+                            (p.PhoneNumber?.Contains(query) ?? false))
                     ).ToList();
 
                     FilteredChats = new ObservableCollection<ChatModel>(filteredList);
                 }
 
-                // Explicitly call property changed to update UI
                 OnPropertyChanged(nameof(HasChats));
                 OnPropertyChanged(nameof(IsEmpty));
-                OnPropertyChanged(nameof(FilteredChats));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error filtering chats");
-                // En caso de error, mostrar todos los chats
+                // Show all chats in case of error
                 FilteredChats = new ObservableCollection<ChatModel>(Chats);
             }
         }
@@ -303,9 +321,9 @@ namespace Solvix.Client.MVVM.ViewModels
             try
             {
                 var navigationParameter = new Dictionary<string, object>
-            {
-                { "ChatId", chat.Id.ToString() } // Convertir Guid a String explícitamente
-            };
+                {
+                    { "ChatId", chat.Id.ToString() }
+                };
 
                 await Shell.Current.GoToAsync($"{nameof(ChatPage)}", navigationParameter);
             }
@@ -318,139 +336,107 @@ namespace Solvix.Client.MVVM.ViewModels
 
         private void OnMessageReceived(MessageModel message)
         {
-            // Find the chat this message belongs to
-            var chat = Chats.FirstOrDefault(c => c.Id == message.ChatId);
-
-            if (chat != null)
+            MainThread.BeginInvokeOnMainThread(async () =>
             {
-                // Update the chat with latest message info
-                chat.LastMessage = message.Content;
-                chat.LastMessageTime = message.SentAt;
-
-                // If this is not the user's own message, increment unread count
-                if (!message.IsOwnMessage)
+                try
                 {
-                    chat.UnreadCount++;
+                    // Find the chat this message belongs to
+                    var chat = Chats.FirstOrDefault(c => c.Id == message.ChatId);
+
+                    if (chat != null)
+                    {
+                        // Update the chat with latest message info
+                        chat.LastMessage = message.Content;
+                        chat.LastMessageTime = message.SentAt;
+
+                        // If this is not the user's own message, increment unread count
+                        if (!message.IsOwnMessage)
+                        {
+                            chat.UnreadCount++;
+                        }
+
+                        // Re-sort chats to put this one at the top
+                        var chatsList = Chats.ToList();
+                        chatsList.Remove(chat);
+                        chatsList.Insert(0, chat);
+
+                        Chats = new ObservableCollection<ChatModel>(chatsList);
+                    }
+                    else
+                    {
+                        // This is a new chat, reload all chats
+                        await LoadChatsAsync();
+                    }
                 }
-
-                // Re-sort chats to put this one at the top
-                var chatsList = Chats.ToList();
-                chatsList.Remove(chat);
-                chatsList.Insert(0, chat);
-
-                MainThread.BeginInvokeOnMainThread(() =>
+                catch (Exception ex)
                 {
-                    Chats = new ObservableCollection<ChatModel>(chatsList);
-                });
-            }
-            else
-            {
-                // This is a new chat, reload all chats
-                MainThread.BeginInvokeOnMainThread(async () =>
-                {
-                    await LoadChatsAsync();
-                });
-            }
+                    _logger.LogError(ex, "Error processing received message");
+                }
+            });
         }
 
         private void OnMessageRead(Guid chatId, int messageId)
         {
-            // Find the chat and update its message read status
-            var chat = Chats.FirstOrDefault(c => c.Id == chatId);
-
-            if (chat != null)
+            MainThread.BeginInvokeOnMainThread(async () =>
             {
-                // For simplicity, we'll just refresh chats
-                MainThread.BeginInvokeOnMainThread(async () =>
+                try
                 {
-                    await LoadChatsAsync();
-                });
-            }
+                    // Find the chat and update its message read status
+                    var chat = Chats.FirstOrDefault(c => c.Id == chatId);
+
+                    if (chat != null)
+                    {
+                        // For simplicity, just refresh chats
+                        await LoadChatsAsync();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error processing message read status");
+                }
+            });
         }
 
         private void OnUserStatusChanged(long userId, bool isOnline, DateTime? lastActive)
         {
-            _logger.LogInformation("User status change event: User {UserId}, IsOnline = {IsOnline}", userId, isOnline);
-
-            // Encontrar chats con este usuario
-            var affectedChats = Chats.Where(c =>
-                !c.IsGroup && c.Participants.Any(p => p.Id == userId)
-            ).ToList();
-
-            if (affectedChats.Any())
+            MainThread.BeginInvokeOnMainThread(async () =>
             {
-                MainThread.BeginInvokeOnMainThread(() => {
-                    foreach (var chat in affectedChats)
-                    {
-                        var participant = chat.Participants.FirstOrDefault(p => p.Id == userId);
-                        if (participant != null)
-                        {
-                            _logger.LogInformation("Updating status for user {UserId} from {OldStatus} to {NewStatus}",
-                                userId, participant.IsOnline, isOnline);
-
-                            participant.IsOnline = isOnline;
-                            participant.LastActive = lastActive;
-                        }
-                    }
-
-                    // Forzar actualización completa de la UI
-                    OnPropertyChanged(nameof(Chats));
-                    OnPropertyChanged(nameof(FilteredChats));
-
-                    // Refrescar los chats para asegurar que las propiedades calculadas se actualicen
-                    FilterChats();
-                });
-            }
-        }
-
-        private List<ChatModel> GenerateMockChats()
-        {
-            _logger.LogInformation("Generating mock chat data for UI");
-            var random = new Random();
-            var mockChats = new List<ChatModel>();
-
-            // Create some mock users
-            var users = new List<UserModel>
-        {
-            new UserModel { Id = 2, FirstName = "John", LastName = "Doe", PhoneNumber = "09123456789", IsOnline = true },
-            new UserModel { Id = 3, FirstName = "Jane", LastName = "Smith", PhoneNumber = "09187654321", IsOnline = false, LastActive = DateTime.UtcNow.AddHours(-2) },
-            new UserModel { Id = 4, FirstName = "Mike", LastName = "Johnson", PhoneNumber = "09123123123", IsOnline = true },
-            new UserModel { Id = 5, FirstName = "Sarah", LastName = "Williams", PhoneNumber = "09456456456", IsOnline = false, LastActive = DateTime.UtcNow.AddDays(-1) }
-        };
-
-            // Create mock chats with these users
-            for (int i = 0; i < users.Count; i++)
-            {
-                var user = users[i];
-                var chatId = Guid.NewGuid();
-
-                var lastMessageTime = i == 0 || i == 2
-                    ? DateTime.UtcNow.AddMinutes(-random.Next(5, 60))
-                    : DateTime.UtcNow.AddDays(-random.Next(1, 5));
-
-                var mockChat = new ChatModel
+                try
                 {
-                    Id = chatId,
-                    IsGroup = false,
-                    CreatedAt = DateTime.UtcNow.AddDays(-random.Next(1, 30)),
-                    LastMessage = i % 2 == 0 ? "Hey, how are you doing?" : "Can we meet tomorrow?",
-                    LastMessageTime = lastMessageTime,
-                    UnreadCount = i % 2 == 0 ? random.Next(0, 5) : 0,
-                    Participants = new List<UserModel>
-                { 
-                    // Add current user
-                    new UserModel { Id = 1, FirstName = "Current", LastName = "User", PhoneNumber = "09111222333", IsOnline = true },
-                    // Add the chat participant
-                    user
+                    _logger.LogInformation("User status changed: User {UserId}, Online: {IsOnline}",
+                        userId, isOnline);
+
+                    // Update status in cache
+                    _userOnlineStatus[userId] = isOnline;
+
+                    // Find chats with this user
+                    var affectedChats = Chats.Where(c =>
+                        c.Participants.Any(p => p.Id == userId)
+                    ).ToList();
+
+                    if (affectedChats.Any())
+                    {
+                        // Update each chat with this user
+                        foreach (var chat in affectedChats)
+                        {
+                            var participant = chat.Participants.FirstOrDefault(p => p.Id == userId);
+                            if (participant != null)
+                            {
+                                participant.IsOnline = isOnline;
+                                participant.LastActive = lastActive;
+                            }
+                        }
+
+                        // Refresh UI
+                        OnPropertyChanged(nameof(Chats));
+                        OnPropertyChanged(nameof(FilteredChats));
+                    }
                 }
-                };
-
-                mockChats.Add(mockChat);
-            }
-
-            // Sort by last message time
-            mockChats = mockChats.OrderByDescending(c => c.LastMessageTime).ToList();
-            return mockChats;
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error updating user status");
+                }
+            });
         }
 
         #region INotifyPropertyChanged
