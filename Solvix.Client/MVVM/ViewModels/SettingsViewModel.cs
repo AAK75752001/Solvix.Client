@@ -76,11 +76,11 @@ namespace Solvix.Client.MVVM.ViewModels
         public ICommand SelectThemeCommand { get; }
 
         public SettingsViewModel(
-            IAuthService authService,
-            ISettingsService settingsService,
-            IToastService toastService,
-            IServiceProvider serviceProvider,
-            ILogger<SettingsViewModel> logger)
+    IAuthService authService,
+    ISettingsService settingsService,
+    IToastService toastService,
+    IServiceProvider serviceProvider,
+    ILogger<SettingsViewModel> logger)
         {
             _authService = authService;
             _settingsService = settingsService;
@@ -98,8 +98,8 @@ namespace Solvix.Client.MVVM.ViewModels
             _currentUser = new UserModel();
             _selectedTheme = Constants.Themes.Light;
 
-            // Initialize settings asynchronously
-            LoadSettingsAsync().ConfigureAwait(false);
+            // Iniciar carga en segundo plano
+            Task.Run(() => LoadSettingsAsync());
         }
 
         private async Task LoadSettingsAsync()
@@ -108,41 +108,50 @@ namespace Solvix.Client.MVVM.ViewModels
 
             try
             {
-                IsLoading = true;
-                _logger.LogInformation("Loading settings and user info");
-
-                // Cargar tema primero
-                SelectedTheme = _settingsService.GetTheme();
-
-                // Usar Task.Run para operaciones de red y evitar bloquear la UI
-                await Task.Run(async () => {
-                    try
-                    {
-                        // Cargar información del usuario
-                        var user = await _authService.GetCurrentUserAsync();
-
-                        await MainThread.InvokeOnMainThreadAsync(() => {
-                            if (user != null)
-                            {
-                                CurrentUser = user;
-                                _logger.LogInformation("User info loaded: {Username}", user.Username);
-                            }
-                            IsLoading = false;
-                        });
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error loading user data in background");
-                        await MainThread.InvokeOnMainThreadAsync(() => {
-                            IsLoading = false;
-                        });
-                    }
+                await MainThread.InvokeOnMainThreadAsync(() => {
+                    IsLoading = true;
+                    _logger.LogInformation("Loading settings and user info");
                 });
+
+                // Cargar tema primero (operación rápida)
+                var theme = _settingsService.GetTheme();
+
+                await MainThread.InvokeOnMainThreadAsync(() => {
+                    SelectedTheme = theme;
+                    _logger.LogInformation("Theme loaded: {Theme}", SelectedTheme);
+                });
+
+                // Cargar información del usuario en segundo plano
+                try
+                {
+                    var user = await _authService.GetCurrentUserAsync();
+
+                    await MainThread.InvokeOnMainThreadAsync(() => {
+                        if (user != null)
+                        {
+                            CurrentUser = user;
+                            _logger.LogInformation("User info loaded: {Username}", user.Username);
+                        }
+                        else
+                        {
+                            _logger.LogWarning("Failed to load user info");
+                        }
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error loading user data");
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error loading settings");
-                IsLoading = false;
+            }
+            finally
+            {
+                await MainThread.InvokeOnMainThreadAsync(() => {
+                    IsLoading = false;
+                });
             }
         }
 
@@ -211,8 +220,24 @@ namespace Solvix.Client.MVVM.ViewModels
 
         private async Task GoBackAsync()
         {
-            _logger.LogInformation("Navigating back from settings");
-            await Shell.Current.GoToAsync("..");
+            try
+            {
+                _logger.LogInformation("Navigating back from settings");
+                await Shell.Current.GoToAsync("..");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error navigating back from settings");
+                // En caso de error, intentar cerrar la página manualmente
+                try
+                {
+                    await Shell.Current.Navigation.PopAsync();
+                }
+                catch
+                {
+                    // Si también falla, no hay más opciones
+                }
+            }
         }
 
         private async Task LogoutAsync()

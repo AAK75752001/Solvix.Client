@@ -5,6 +5,8 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using Microsoft.Extensions.Logging;
+
 
 namespace Solvix.Client.MVVM.ViewModels
 {
@@ -14,6 +16,7 @@ namespace Solvix.Client.MVVM.ViewModels
         private readonly IChatService _chatService;
         private readonly ISignalRService _signalRService;
         private readonly IToastService _toastService;
+        private readonly ILogger<ChatViewModel> _logger;
 
         private string _chatId;
         private ChatModel _chat;
@@ -95,8 +98,17 @@ namespace Solvix.Client.MVVM.ViewModels
 
         public bool CanSendMessage => !string.IsNullOrWhiteSpace(MessageText) && !IsSending;
 
-        public ObservableCollection<MessageModel> Messages => Chat?.Messages;
-
+        public ObservableCollection<MessageModel> Messages
+        {
+            get
+            {
+                if (Chat?.Messages == null)
+                {
+                    return new ObservableCollection<MessageModel>();
+                }
+                return Chat.Messages;
+            }
+        }
         public ICommand SendMessageCommand { get; }
         public ICommand BackCommand { get; }
         public ICommand ViewProfileCommand { get; }
@@ -132,8 +144,18 @@ namespace Solvix.Client.MVVM.ViewModels
                 {
                     Chat = chat;
 
-                    // Mark unread messages as read
-                    await MarkUnreadMessagesAsReadAsync();
+                    // Marcar los mensajes como leídos en segundo plano
+                    Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await MarkUnreadMessagesAsReadAsync();
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Error marking messages as read");
+                        }
+                    });
                 }
                 else
                 {
@@ -143,6 +165,7 @@ namespace Solvix.Client.MVVM.ViewModels
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Error loading chat {ChatId}: {Message}", ChatId, ex.Message);
                 await _toastService.ShowToastAsync($"Error: {ex.Message}", ToastType.Error);
             }
             finally
@@ -226,7 +249,7 @@ namespace Solvix.Client.MVVM.ViewModels
 
             try
             {
-                // Find unread messages that are not from the current user
+                // Encontrar mensajes no leídos que no son del usuario actual
                 var unreadMessageIds = Chat.Messages
                     .Where(m => !m.IsOwnMessage && !m.IsRead)
                     .Select(m => m.Id)
@@ -234,23 +257,26 @@ namespace Solvix.Client.MVVM.ViewModels
 
                 if (unreadMessageIds.Count > 0)
                 {
-                    // Mark as read
+                    // Marcar como leídos
                     await _chatService.MarkAsReadAsync(chatGuid, unreadMessageIds);
 
-                    // Update locally
-                    foreach (var message in Chat.Messages)
-                    {
-                        if (unreadMessageIds.Contains(message.Id))
+                    // Actualizar localmente
+                    await MainThread.InvokeOnMainThreadAsync(() => {
+                        foreach (var message in Chat.Messages)
                         {
-                            message.IsRead = true;
-                            message.ReadAt = DateTime.UtcNow;
+                            if (unreadMessageIds.Contains(message.Id))
+                            {
+                                message.IsRead = true;
+                                message.ReadAt = DateTime.UtcNow;
+                            }
                         }
-                    }
+                    });
                 }
             }
             catch (Exception ex)
             {
-                await _toastService.ShowToastAsync($"Error marking messages as read: {ex.Message}", ToastType.Error);
+                _logger.LogError(ex, "Error marking messages as read");
+                // No mostrar toast para no interrumpir la experiencia
             }
         }
 
