@@ -11,11 +11,29 @@ namespace Solvix.Client.Core.Services
     {
         private static readonly Dictionary<Guid, List<MessageModel>> _cachedMessages = new();
         private static readonly Dictionary<Guid, DateTime> _lastCacheUpdate = new();
-        private const int CACHE_EXPIRY_MINUTES = 5;
+        private const int CACHE_EXPIRY_MINUTES = 30; // Increased from 5 to 30 minutes
 
         public static void CacheMessages(Guid chatId, List<MessageModel> messages)
         {
-            _cachedMessages[chatId] = messages;
+            // Make a deep copy of messages to avoid reference issues
+            var messagesCopy = messages.Select(m => new MessageModel
+            {
+                Id = m.Id,
+                Content = m.Content,
+                SentAt = m.SentAt,
+                SenderId = m.SenderId,
+                SenderName = m.SenderName,
+                ChatId = m.ChatId,
+                IsRead = m.IsRead,
+                ReadAt = m.ReadAt,
+                IsEdited = m.IsEdited,
+                EditedAt = m.EditedAt,
+                Status = m.Status,
+                SentAtFormatted = m.SentAtFormatted,
+                IsOwnMessage = m.IsOwnMessage
+            }).ToList();
+
+            _cachedMessages[chatId] = messagesCopy;
             _lastCacheUpdate[chatId] = DateTime.UtcNow;
         }
 
@@ -40,6 +58,12 @@ namespace Solvix.Client.Core.Services
                 _cachedMessages.Remove(chatId);
                 _lastCacheUpdate.Remove(chatId);
             }
+        }
+
+        public static void InvalidateAllCaches()
+        {
+            _cachedMessages.Clear();
+            _lastCacheUpdate.Clear();
         }
     }
 }

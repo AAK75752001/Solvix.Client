@@ -8,25 +8,58 @@ namespace Solvix.Client
         {
             if (value is bool isOwnMessage)
             {
-                if (parameter != null && parameter.ToString() == "Color")
+                // For color conversions
+                if (parameter != null && parameter.ToString() == "Color" &&
+                    typeof(Color).IsAssignableFrom(targetType))
                 {
-                    return isOwnMessage
-                        ? Application.Current.Resources["SentMessageBubbleColor"]
-                        : Application.Current.Resources["ReceivedMessageBubbleColor"];
+                    try
+                    {
+                        return isOwnMessage
+                            ? Application.Current.Resources["SentMessageBubbleColor"]
+                            : Application.Current.Resources["ReceivedMessageBubbleColor"];
+                    }
+                    catch
+                    {
+                        // Fallback colors if resources not found
+                        return isOwnMessage ? Colors.LightBlue : Colors.LightGray;
+                    }
                 }
 
-                if (parameter != null && parameter.ToString() == "TextColor")
+                // For text color conversions
+                if (parameter != null && parameter.ToString() == "TextColor" &&
+                    typeof(Color).IsAssignableFrom(targetType))
                 {
-                    return isOwnMessage
-                        ? Application.Current.Resources["SentMessageTextColor"]
-                        : Application.Current.Resources["ReceivedMessageTextColor"];
+                    try
+                    {
+                        return isOwnMessage
+                            ? Application.Current.Resources["SentMessageTextColor"]
+                            : Application.Current.Resources["ReceivedMessageTextColor"];
+                    }
+                    catch
+                    {
+                        // Fallback colors if resources not found
+                        return isOwnMessage ? Colors.Black : Colors.Black;
+                    }
                 }
 
-                // For alignment, explicitly return LayoutOptions.End for own messages, Start for others
-                return isOwnMessage ? LayoutOptions.End : LayoutOptions.Start;
+                // For layout options
+                if (targetType == typeof(LayoutOptions))
+                {
+                    return isOwnMessage ? LayoutOptions.End : LayoutOptions.Start;
+                }
             }
 
-            return LayoutOptions.Start;
+            // Default fallbacks based on target type
+            if (typeof(Color).IsAssignableFrom(targetType))
+            {
+                return Colors.Gray;
+            }
+            else if (targetType == typeof(LayoutOptions))
+            {
+                return LayoutOptions.Start;
+            }
+
+            return value;
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

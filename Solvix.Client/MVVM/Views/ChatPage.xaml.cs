@@ -52,4 +52,10 @@ public partial class ChatPage : ContentPage
             _viewModel.ChatId = _chatId;
         }
     }
+
+    protected override bool OnBackButtonPressed()
+    {
+        // Let the base class handle the back button
+        return base.OnBackButtonPressed();
+    }
 }

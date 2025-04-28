@@ -320,10 +320,12 @@ namespace Solvix.Client.MVVM.ViewModels
 
             try
             {
+                // Add timestamp to force new instance creation
                 var navigationParameter = new Dictionary<string, object>
-                {
-                    { "ChatId", chat.Id.ToString() }
-                };
+        {
+            { "ChatId", chat.Id.ToString() },
+            { "t", DateTime.Now.Ticks.ToString() } // Add timestamp for uniqueness
+        };
 
                 await Shell.Current.GoToAsync($"{nameof(ChatPage)}", navigationParameter);
             }

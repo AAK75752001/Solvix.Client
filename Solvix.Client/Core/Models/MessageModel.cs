@@ -94,18 +94,18 @@ namespace Solvix.Client.Core.Models
             get
             {
                 if (IsFailed)
-                    return "\ue000"; // error
+                    return "❌"; // Unicode error symbol
 
                 if (IsReadByReceiver)
-                    return "\ue8f0"; // done_all (filled)
+                    return "✓✓"; // Unicode double check mark
 
                 if (IsDelivered)
-                    return "\ue5ca"; // done_all (outline)
+                    return "✓"; // Unicode double check mark
 
                 if (IsSent)
-                    return "\ue5ca"; // done (outline)
+                    return "✓"; // Unicode check mark
 
-                return "\ue192"; // watch_later
+                return "⏱"; // Unicode watch symbol
             }
         }
     }

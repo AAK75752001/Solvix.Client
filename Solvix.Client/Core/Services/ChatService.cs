@@ -94,11 +94,20 @@ namespace Solvix.Client.Core.Services
                     chat.Participants ??= new List<UserModel>();
                     chat.Messages ??= new ObservableCollection<MessageModel>();
 
-                    // Log participant online status
+                    // Get the current user ID to determine which participant is the "other" one
+                    var currentUserId = await GetCurrentUserIdAsync();
+
+                    // Log participant details
                     foreach (var participant in chat.Participants)
                     {
-                        _logger.LogDebug("Participant {UserId} ({Username}): IsOnline = {IsOnline}",
-                            participant.Id, participant.Username, participant.IsOnline);
+                        // Mark our own participant as online (from our perspective)
+                        if (participant.Id == currentUserId)
+                        {
+                            participant.IsOnline = true;
+                        }
+
+                        _logger.LogDebug("Participant {UserId} ({Username}): IsOnline = {IsOnline}, Current User = {IsCurrentUser}",
+                            participant.Id, participant.Username, participant.IsOnline, participant.Id == currentUserId);
                     }
 
                     // Initialize computed properties
@@ -222,8 +231,13 @@ namespace Solvix.Client.Core.Services
                     var cachedMessages = MessageCache.GetCachedMessages(chatId);
                     if (cachedMessages != null && cachedMessages.Count > 0)
                     {
-                        _logger.LogInformation("Using cached messages for chat {ChatId}", chatId);
+                        _logger.LogInformation("Using cached messages for chat {ChatId}, count: {Count}",
+                            chatId, cachedMessages.Count);
                         return cachedMessages;
+                    }
+                    else
+                    {
+                        _logger.LogInformation("No cache found for chat {ChatId}, loading from server", chatId);
                     }
                 }
 
@@ -239,7 +253,7 @@ namespace Solvix.Client.Core.Services
 
                 var messages = await _apiService.GetAsync<List<MessageModel>>(endpoint, queryParams);
 
-                if (messages != null)
+                if (messages != null && messages.Count > 0)
                 {
                     _logger.LogInformation("Retrieved {Count} messages for chat {ChatId}",
                         messages.Count, chatId);
@@ -270,6 +284,8 @@ namespace Solvix.Client.Core.Services
                     if (skip == 0)
                     {
                         MessageCache.CacheMessages(chatId, messages);
+                        _logger.LogInformation("Cached {Count} messages for chat {ChatId}",
+                            messages.Count, chatId);
                     }
 
                     return messages;
@@ -374,28 +390,37 @@ namespace Solvix.Client.Core.Services
 
         private string FormatMessageTime(DateTime dateTime)
         {
-            var now = DateTime.Now;
-            var messageTime = dateTime.ToLocalTime(); // Convert UTC to local time
+            try
+            {
+                // Always use local time for display - convert from UTC
+                var localDateTime = TimeZoneInfo.ConvertTimeFromUtc(dateTime, TimeZoneInfo.Local);
+                var now = DateTime.Now;
 
-            // Today, show only time
-            if (messageTime.Date == now.Date)
-            {
-                return messageTime.ToString("HH:mm");
+                // Today, show only time in 24-hour format
+                if (localDateTime.Date == now.Date)
+                {
+                    return localDateTime.ToString("HH:mm");
+                }
+                // Yesterday
+                else if (localDateTime.Date == now.Date.AddDays(-1))
+                {
+                    return "Yesterday " + localDateTime.ToString("HH:mm");
+                }
+                // Within the last week
+                else if ((now.Date - localDateTime.Date).TotalDays < 7)
+                {
+                    return localDateTime.ToString("ddd HH:mm"); // Day of week + time
+                }
+                // Older messages
+                else
+                {
+                    return localDateTime.ToString("yyyy-MM-dd HH:mm");
+                }
             }
-            // Yesterday
-            else if (messageTime.Date == now.Date.AddDays(-1))
+            catch (Exception)
             {
-                return "Yesterday " + messageTime.ToString("HH:mm");
-            }
-            // Within the last week
-            else if ((now.Date - messageTime.Date).TotalDays < 7)
-            {
-                return messageTime.ToString("ddd HH:mm"); // Day of week + time
-            }
-            // Older messages
-            else
-            {
-                return messageTime.ToString("yyyy-MM-dd HH:mm");
+                // Fallback to simple time format if any error occurs
+                return dateTime.ToString("HH:mm");
             }
         }
 

@@ -354,9 +354,16 @@ namespace Solvix.Client.Core.Services
 
             if (response.IsSuccessStatusCode)
             {
+                // If content is empty and T is object or void, return default(T)
+                if (string.IsNullOrWhiteSpace(content))
+                {
+                    _logger.LogDebug("Response content is empty, returning default for type {Type}", typeof(T).Name);
+                    return default;
+                }
+
                 try
                 {
-                    // Intenta deserializar como ApiResponse<T>
+                    // Try to deserialize as ApiResponse<T>
                     var apiResponse = JsonSerializer.Deserialize<Models.ApiResponse<T>>(content, _serializerOptions);
 
                     if (apiResponse != null)
@@ -379,25 +386,32 @@ namespace Solvix.Client.Core.Services
                         }
                     }
 
-                    // Si ApiResponse deserialización falla o data es null, intenta deserialización directa
-                    var result = JsonSerializer.Deserialize<T>(content, _serializerOptions);
-                    return result;
+                    // If ApiResponse deserialization fails or data is null, try direct deserialization
+                    return JsonSerializer.Deserialize<T>(content, _serializerOptions);
                 }
                 catch (JsonException ex)
                 {
                     _logger.LogError(ex, "JSON deserialization error for content: {Content}", content);
 
-                    // Deserialización directa si estructura ApiResponse no está presente
+                    // Try direct deserialization if ApiResponse structure is not present
                     try
                     {
-                        return JsonSerializer.Deserialize<T>(content, _serializerOptions);
+                        if (!string.IsNullOrWhiteSpace(content))
+                        {
+                            return JsonSerializer.Deserialize<T>(content, _serializerOptions);
+                        }
+                        else
+                        {
+                            _logger.LogDebug("Empty content returned, but type {Type} expected", typeof(T).Name);
+                            return default;
+                        }
                     }
-                    catch
+                    catch (Exception innerEx)
                     {
-                        _logger.LogError("Failed to deserialize response as {Type}", typeof(T).Name);
+                        _logger.LogError(innerEx, "Failed to deserialize response as {Type}", typeof(T).Name);
 
-                        // Solo muestra toast en contextos de UI, no durante inicio de app
-                        if (MainThread.IsMainThread)
+                        // Only show toast in UI contexts
+                        if (MainThread.IsMainThread && typeof(T) != typeof(object))
                         {
                             await _toastService.ShowToastAsync("Error processing data from server", ToastType.Error);
                         }
@@ -407,30 +421,33 @@ namespace Solvix.Client.Core.Services
             }
             else
             {
-                // Manejar respuestas de error
+                // Handle error responses
                 try
                 {
-                    // Intentar deserializar mensaje de error
-                    var errorResponse = JsonSerializer.Deserialize<Models.ApiResponse<object>>(content, _serializerOptions);
-                    if (errorResponse != null && !string.IsNullOrEmpty(errorResponse.Message))
+                    // Try to deserialize error message
+                    if (!string.IsNullOrWhiteSpace(content))
                     {
-                        _logger.LogWarning("API error: {StatusCode} - {Message}", response.StatusCode, errorResponse.Message);
-
-                        // Solo muestra toast en contextos de UI, no durante inicio de app
-                        if (MainThread.IsMainThread)
+                        var errorResponse = JsonSerializer.Deserialize<Models.ApiResponse<object>>(content, _serializerOptions);
+                        if (errorResponse != null && !string.IsNullOrEmpty(errorResponse.Message))
                         {
-                            await _toastService.ShowToastAsync(errorResponse.Message, ToastType.Error);
+                            _logger.LogWarning("API error: {StatusCode} - {Message}", response.StatusCode, errorResponse.Message);
+
+                            // Only show toast in UI contexts
+                            if (MainThread.IsMainThread)
+                            {
+                                await _toastService.ShowToastAsync(errorResponse.Message, ToastType.Error);
+                            }
+                            return default;
                         }
-                        return default;
                     }
                 }
                 catch (JsonException)
                 {
-                    // Si error no puede ser deserializado, muestra error genérico
+                    // If error can't be deserialized, show generic error
                     _logger.LogWarning("API error: {StatusCode}", response.StatusCode);
                     var errorMessage = $"Server error: {response.StatusCode}";
 
-                    // Mostrar mensajes específicos para códigos de estado comunes
+                    // Show specific messages for common status codes
                     if (response.StatusCode == HttpStatusCode.Unauthorized)
                     {
                         errorMessage = "Authentication failed. Please log in again.";
@@ -443,8 +460,12 @@ namespace Solvix.Client.Core.Services
                     {
                         errorMessage = "Invalid request. Please check your input.";
                     }
+                    else if (response.StatusCode == HttpStatusCode.MethodNotAllowed)
+                    {
+                        errorMessage = "This action is not allowed.";
+                    }
 
-                    // Solo muestra toast en contextos de UI, no durante inicio de app
+                    // Only show toast in UI contexts
                     if (MainThread.IsMainThread)
                     {
                         await _toastService.ShowToastAsync(errorMessage, ToastType.Error);

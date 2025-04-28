@@ -23,6 +23,7 @@ namespace Solvix.Client.MVVM.ViewModels
         private bool _isLoading;
         private bool _isSending;
         private bool _noMessages = false;
+        private long _currentUserId = 0;
         private ObservableCollection<MessageModel> _messages = new();
 
         public string ChatId
@@ -42,6 +43,39 @@ namespace Solvix.Client.MVVM.ViewModels
                         LoadChatAsync().ConfigureAwait(false);
                     }
                 }
+            }
+        }
+
+        private long GetUserIdSync()
+        {
+            try
+            {
+                // Try to get from field first
+                if (_currentUserId > 0)
+                    return _currentUserId;
+
+                // Try to get synchronously from secure storage
+                var userIdTask = _chatService.GetCurrentUserIdAsync();
+                if (userIdTask.IsCompleted)
+                {
+                    _currentUserId = userIdTask.Result;
+                    return _currentUserId;
+                }
+
+                // If task not completed, wait a short time
+                userIdTask.Wait(100);  // Wait up to 100ms
+                if (userIdTask.IsCompleted)
+                {
+                    _currentUserId = userIdTask.Result;
+                    return _currentUserId;
+                }
+
+                // If still not available, return 0
+                return 0;
+            }
+            catch
+            {
+                return 0;
             }
         }
 
@@ -163,6 +197,49 @@ namespace Solvix.Client.MVVM.ViewModels
             _logger.LogInformation("ChatViewModel initialized");
         }
 
+        private async Task FixOnlineStatusAsync()
+        {
+            if (Chat?.Participants == null)
+                return;
+
+            try
+            {
+                // Get our user ID
+                var currentUserId = _currentUserId > 0 ? _currentUserId : await _chatService.GetCurrentUserIdAsync();
+                if (_currentUserId == 0)
+                    _currentUserId = currentUserId;
+
+                // Find the other participant
+                var otherParticipant = Chat.Participants.FirstOrDefault(p => p.Id != currentUserId);
+                if (otherParticipant != null)
+                {
+                    // If we don't have explicit online status, assume offline
+                    // The SignalR service will update if they're actually online
+                    if (!otherParticipant.IsOnline)
+                    {
+                        _logger.LogInformation("Setting participant {UserId} ({Name}) as offline by default",
+                            otherParticipant.Id, otherParticipant.DisplayName);
+                        otherParticipant.IsOnline = false;
+                    }
+                }
+
+                // Mark ourselves as online
+                var selfParticipant = Chat.Participants.FirstOrDefault(p => p.Id == currentUserId);
+                if (selfParticipant != null)
+                {
+                    selfParticipant.IsOnline = true;
+                }
+
+                // Update UI
+                OnPropertyChanged(nameof(Chat));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error fixing online status");
+            }
+        }
+
+
         private async Task LoadChatAsync()
         {
             if (string.IsNullOrEmpty(ChatId))
@@ -246,6 +323,9 @@ namespace Solvix.Client.MVVM.ViewModels
                                     NoMessages = true;
                                     _logger.LogWarning("No messages to display");
                                 }
+                                // After loading the chat but before setting IsLoading = false:
+                                //await FixOnlineStatusAsync();
+
 
                                 // Set loading to false
                                 IsLoading = false;
@@ -326,98 +406,96 @@ namespace Solvix.Client.MVVM.ViewModels
 
         private async Task SendMessageAsync()
         {
-            if (!CanSendMessage || string.IsNullOrEmpty(ChatId) ||
-                !Guid.TryParse(ChatId, out var chatGuid))
+            if (!CanSendMessage || string.IsNullOrEmpty(ChatId) || !Guid.TryParse(ChatId, out var chatGuid))
                 return;
 
             string messageText = MessageText.Trim();
 
             // Clear message input immediately for better UX
-            await MainThread.InvokeOnMainThreadAsync(() =>
-            {
-                MessageText = string.Empty;
-                OnPropertyChanged(nameof(MessageText));
-            });
+            MessageText = string.Empty;
 
             try
             {
-                await MainThread.InvokeOnMainThreadAsync(() => IsSending = true);
+                IsSending = true;
 
                 _logger.LogInformation("Sending message to chat {ChatId}: {MessageText}",
                     chatGuid, messageText);
 
-                // Create temporary message for immediate display
+                // Create temporary message with a unique negative ID
                 var tempMessage = new MessageModel
                 {
-                    Id = -new Random().Next(1000, 9999), // Temporary negative ID
+                    Id = -DateTime.Now.Millisecond - 1000 * new Random().Next(1000, 9999), // Ensure unique negative ID
                     Content = messageText,
                     SentAt = DateTime.UtcNow,
                     ChatId = chatGuid,
-                    SenderId = await _chatService.GetCurrentUserIdAsync(),
+                    SenderId = _currentUserId > 0 ? _currentUserId : await _chatService.GetCurrentUserIdAsync(),
                     SenderName = "You", // Will be replaced by server response
                     Status = Constants.MessageStatus.Sending,
-                    SentAtFormatted = DateTime.UtcNow.ToString("HH:mm"),
+                    SentAtFormatted = FormatLocalTime(DateTime.UtcNow),
                     IsOwnMessage = true // Explicitly set this to true for UI
                 };
 
-                // Add to local messages immediately
-                await MainThread.InvokeOnMainThreadAsync(() =>
+                // Cache the current user ID for future use
+                if (_currentUserId == 0)
                 {
-                    // Add to chat messages collection
+                    _currentUserId = tempMessage.SenderId;
+                }
+
+                // Add to local messages immediately - direct manipulation, no collection replacement
+                Messages.Add(tempMessage);
+                NoMessages = false;
+
+                // Also add to chat's messages collection
+                if (Chat != null)
+                {
                     Chat.Messages ??= new ObservableCollection<MessageModel>();
                     Chat.Messages.Add(tempMessage);
+                }
 
-                    // Add to view model's messages collection
-                    Messages.Add(tempMessage);
-                    NoMessages = false;
-
-                    // Force UI update
-                    OnPropertyChanged(nameof(Messages));
-                });
-
-                // Send the message to the server (in background)
+                // Send the message to the server in background
                 MessageModel message = null;
-                await Task.Run(async () =>
+                try
                 {
-                    try
-                    {
-                        message = await _chatService.SendMessageAsync(chatGuid, messageText);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Background message sending failed");
-                    }
-                });
+                    message = await _chatService.SendMessageAsync(chatGuid, messageText);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error sending message to server");
+                }
 
+                // Process the response on the UI thread
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     if (message != null)
                     {
-                        // Ensure the received message has IsOwnMessage=true
-                        message.IsOwnMessage = true;
-
-                        // Try to find and remove the temporary message
+                        // Find and replace the temporary message
                         var tempMsg = Messages.FirstOrDefault(m => m.Id == tempMessage.Id);
                         if (tempMsg != null)
                         {
-                            Messages.Remove(tempMsg);
+                            // Set the server message to match the temp message's isOwnMessage
+                            message.IsOwnMessage = true;
 
-                            // Also remove from chat's messages if it exists there
+                            // Replace at the same index
+                            int tempIndex = Messages.IndexOf(tempMsg);
+                            if (tempIndex >= 0 && tempIndex < Messages.Count)
+                            {
+                                Messages[tempIndex] = message;
+                            }
+
+                            // Also update in chat's messages
                             if (Chat?.Messages != null)
                             {
                                 var chatTempMsg = Chat.Messages.FirstOrDefault(m => m.Id == tempMessage.Id);
                                 if (chatTempMsg != null)
                                 {
-                                    Chat.Messages.Remove(chatTempMsg);
+                                    int chatTempIndex = Chat.Messages.IndexOf(chatTempMsg);
+                                    if (chatTempIndex >= 0 && chatTempIndex < Chat.Messages.Count)
+                                    {
+                                        Chat.Messages[chatTempIndex] = message;
+                                    }
                                 }
                             }
                         }
-
-                        // Add the confirmed message from server
-                        Messages.Add(message);
-
-                        // Also add to chat's messages
-                        Chat?.Messages?.Add(message);
 
                         _logger.LogInformation("Message sent successfully, server ID: {MessageId}", message.Id);
 
@@ -439,18 +517,27 @@ namespace Solvix.Client.MVVM.ViewModels
                     }
 
                     IsSending = false;
-                    OnPropertyChanged(nameof(Messages));
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error sending message");
+                _logger.LogError(ex, "Error in SendMessageAsync: {Message}", ex.Message);
+                IsSending = false;
+                await _toastService.ShowToastAsync($"Error sending message: {ex.Message}", ToastType.Error);
+            }
+        }
 
-                await MainThread.InvokeOnMainThreadAsync(() =>
-                {
-                    IsSending = false;
-                    _toastService.ShowToastAsync($"Error sending message: {ex.Message}", ToastType.Error);
-                });
+        // Helper method to format time correctly
+        private string FormatLocalTime(DateTime utcTime)
+        {
+            try
+            {
+                var localTime = TimeZoneInfo.ConvertTimeFromUtc(utcTime, TimeZoneInfo.Local);
+                return localTime.ToString("HH:mm");
+            }
+            catch
+            {
+                return utcTime.ToString("HH:mm");
             }
         }
 
@@ -483,19 +570,65 @@ namespace Solvix.Client.MVVM.ViewModels
             {
                 try
                 {
-                    _logger.LogInformation("Received message {MessageId} for chat {ChatId}",
-                        message.Id, message.ChatId);
+                    _logger.LogInformation("Received message {MessageId} for chat {ChatId} from userId {SenderId}",
+                        message.Id, message.ChatId, message.SenderId);
 
-                    // Check if this message already exists in our collection
+                    // Get our user ID to properly determine if message is our own
+                    // Use a stored value to avoid async issues
+                    var currentUserId = _currentUserId > 0 ? _currentUserId : GetUserIdSync();
+
+                    // Set IsOwnMessage based on the sender ID
+                    bool isOwnMessage = message.SenderId == currentUserId;
+                    message.IsOwnMessage = isOwnMessage;
+
+                    _logger.LogDebug("Message from SenderId {SenderId}, CurrentUserId {CurrentUserId}, IsOwnMessage: {IsOwnMessage}",
+                        message.SenderId, currentUserId, isOwnMessage);
+
+                    // Check if this message already exists in our collection by ID
                     var existingMessage = Messages.FirstOrDefault(m => m.Id == message.Id);
 
-                    if (existingMessage != null)
+                    // Also check for temporary messages we added when sending
+                    var tempMessage = isOwnMessage ?
+                        // Only look for temp messages if this is our own message
+                        Messages.FirstOrDefault(m =>
+                            m.Id < 0 && // Temp messages have negative IDs
+                            m.Content == message.Content &&
+                            Math.Abs((m.SentAt - message.SentAt).TotalSeconds) < 30 && // Within 30 seconds
+                            m.IsOwnMessage) // Must be our own message
+                        : null;
+
+                    if (tempMessage != null)
                     {
-                        // Replace the existing message
-                        var index = Messages.IndexOf(existingMessage);
+                        // Found a temporary message, replace it with the confirmed one
+                        _logger.LogInformation("Found temporary message {TempId} matching server message {MessageId}",
+                            tempMessage.Id, message.Id);
+
+                        var index = Messages.IndexOf(tempMessage);
                         Messages[index] = message;
 
                         // Also update in chat's messages if it exists there
+                        if (Chat?.Messages != null)
+                        {
+                            var chatTempMsg = Chat.Messages.FirstOrDefault(m => m.Id == tempMessage.Id);
+                            if (chatTempMsg != null)
+                            {
+                                var chatIndex = Chat.Messages.IndexOf(chatTempMsg);
+                                Chat.Messages[chatIndex] = message;
+                            }
+                        }
+                    }
+                    else if (existingMessage != null)
+                    {
+                        // Update existing message with the new data
+                        var index = Messages.IndexOf(existingMessage);
+
+                        // Keep the original IsOwnMessage value to avoid UI changes
+                        var wasOwnMessage = existingMessage.IsOwnMessage;
+                        message.IsOwnMessage = wasOwnMessage;
+
+                        Messages[index] = message;
+
+                        // Also update in chat's messages
                         if (Chat?.Messages != null)
                         {
                             var chatExistingMsg = Chat.Messages.FirstOrDefault(m => m.Id == message.Id);
@@ -508,20 +641,32 @@ namespace Solvix.Client.MVVM.ViewModels
                     }
                     else
                     {
-                        // Add the new message
-                        Messages.Add(message);
-                        NoMessages = false;
+                        // It's a genuinely new message
+                        // Add it only if it's not a duplicate of something we already have
+                        bool isDuplicate = Messages.Any(m =>
+                            m.Content == message.Content &&
+                            Math.Abs((m.SentAt - message.SentAt).TotalSeconds) < 30 &&
+                            m.SenderId == message.SenderId);
 
-                        // Also add to chat's messages
-                        if (Chat?.Messages != null)
+                        if (!isDuplicate)
                         {
-                            Chat.Messages.Add(message);
+                            // Truly new message
+                            Messages.Add(message);
+                            NoMessages = false;
+
+                            // Also add to chat's messages
+                            Chat?.Messages?.Add(message);
+
+                            // Mark message as read immediately if it's not from current user
+                            if (!isOwnMessage)
+                            {
+                                MarkMessageAsReadAsync(message.Id).ConfigureAwait(false);
+                            }
                         }
-
-                        // Mark message as read immediately if it's not from current user
-                        if (!message.IsOwnMessage)
+                        else
                         {
-                            MarkUnreadMessagesAsReadAsync().ConfigureAwait(false);
+                            _logger.LogWarning("Ignoring duplicate message {MessageId} with content '{Content}'",
+                                message.Id, message.Content);
                         }
                     }
 
@@ -532,6 +677,21 @@ namespace Solvix.Client.MVVM.ViewModels
                     _logger.LogError(ex, "Error handling received message");
                 }
             });
+        }
+
+        private async Task MarkMessageAsReadAsync(int messageId)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(ChatId) || !Guid.TryParse(ChatId, out var chatGuid))
+                    return;
+
+                await _chatService.MarkAsReadAsync(chatGuid, new List<int> { messageId });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error marking message {MessageId} as read", messageId);
+            }
         }
 
         private void OnMessageRead(Guid chatId, int messageId)
