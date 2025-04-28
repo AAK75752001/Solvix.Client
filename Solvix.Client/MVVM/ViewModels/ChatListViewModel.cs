@@ -370,6 +370,8 @@ namespace Solvix.Client.MVVM.ViewModels
 
         private void OnUserStatusChanged(long userId, bool isOnline, DateTime? lastActive)
         {
+            _logger.LogInformation("User status change event: User {UserId}, IsOnline = {IsOnline}", userId, isOnline);
+
             // Encontrar chats con este usuario
             var affectedChats = Chats.Where(c =>
                 !c.IsGroup && c.Participants.Any(p => p.Id == userId)
@@ -377,10 +379,7 @@ namespace Solvix.Client.MVVM.ViewModels
 
             if (affectedChats.Any())
             {
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    bool anyChanges = false;
-
+                MainThread.BeginInvokeOnMainThread(() => {
                     foreach (var chat in affectedChats)
                     {
                         var participant = chat.Participants.FirstOrDefault(p => p.Id == userId);
@@ -389,26 +388,17 @@ namespace Solvix.Client.MVVM.ViewModels
                             _logger.LogInformation("Updating status for user {UserId} from {OldStatus} to {NewStatus}",
                                 userId, participant.IsOnline, isOnline);
 
-                            if (participant.IsOnline != isOnline || participant.LastActive != lastActive)
-                            {
-                                participant.IsOnline = isOnline;
-                                participant.LastActive = lastActive;
-                                anyChanges = true;
-                            }
+                            participant.IsOnline = isOnline;
+                            participant.LastActive = lastActive;
                         }
                     }
 
-                    if (anyChanges)
-                    {
-                        // Actualización explícita de la UI
-                        OnPropertyChanged(nameof(Chats));
-                        OnPropertyChanged(nameof(FilteredChats));
+                    // Forzar actualización completa de la UI
+                    OnPropertyChanged(nameof(Chats));
+                    OnPropertyChanged(nameof(FilteredChats));
 
-                        // Forzar refresh completo
-                        var tempChats = new ObservableCollection<ChatModel>(Chats);
-                        Chats = tempChats;
-                        FilterChats();
-                    }
+                    // Refrescar los chats para asegurar que las propiedades calculadas se actualicen
+                    FilterChats();
                 });
             }
         }

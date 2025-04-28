@@ -31,43 +31,31 @@ namespace Solvix.Client.Core.Services
             {
                 _logger.LogInformation("Fetching chats");
 
-#if DEBUG
-                if (Constants.BaseApiUrl.Contains("localhost"))
-                {
-                    return GenerateMockChats();
-                }
-#endif
-
                 var response = await _apiService.GetAsync<List<ChatModel>>(Constants.Endpoints.GetChats);
 
-                if (response == null)
+                if (response != null)
                 {
-                    _logger.LogWarning("GetChatsAsync returned null");
-                    await _toastService.ShowToastAsync("Unable to load chats. Please try again later.", ToastType.Warning);
-                    return new List<ChatModel>();
-                }
-
-                // اطمینان حاصل کنیم که هر چت valid است و آماده‌سازی خصوصیت‌های محاسباتی
-                foreach (var chat in response)
-                {
-                    if (chat != null)
+                    // Agregar logs para el estado online
+                    foreach (var chat in response)
                     {
-                        // مطمئن شوید که هر چت حداقل یک لیست Participants و Messages خالی دارد، نه null
-                        chat.Participants = chat.Participants ?? new List<UserModel>();
-                        chat.Messages = chat.Messages ?? new System.Collections.ObjectModel.ObservableCollection<MessageModel>();
+                        foreach (var participant in chat.Participants)
+                        {
+                            _logger.LogInformation("API returned participant {UserId} ({Name}) with IsOnline = {IsOnline}",
+                                participant.Id,
+                                participant.Username,
+                                participant.IsOnline);
+                        }
                     }
+
+                    return response;
                 }
 
-                _logger.LogInformation("Successfully retrieved {Count} chats", response.Count);
-                return response;
+                return new List<ChatModel>();
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to load chats");
-                await _toastService.ShowToastAsync("Failed to load chats: " + ex.Message, ToastType.Error);
-
-                // برگرداندن لیست خالی برای جلوگیری از خطای null
-                return new List<ChatModel>();
+                throw;
             }
         }
 
@@ -233,20 +221,12 @@ namespace Solvix.Client.Core.Services
                 _logger.LogInformation("Fetching messages for chat {ChatId}, skip={Skip}, take={Take}",
                     chatId, skip, take);
 
-                // Use mock data temporarily for testing UI
-#if DEBUG
-                if (Constants.BaseApiUrl.Contains("localhost"))
-                {
-                    return GenerateMockMessages(chatId, take);
-                }
-#endif
-
                 var endpoint = $"{Constants.Endpoints.GetMessages}/{chatId}/messages";
                 var queryParams = new Dictionary<string, string>
-                {
-                    { "skip", skip.ToString() },
-                    { "take", take.ToString() }
-                };
+        {
+            { "skip", skip.ToString() },
+            { "take", take.ToString() }
+        };
 
                 var messages = await _apiService.GetAsync<List<MessageModel>>(endpoint, queryParams);
 
@@ -258,9 +238,14 @@ namespace Solvix.Client.Core.Services
                     // Set the initial status for all messages
                     foreach (var message in messages)
                     {
+                        // Aquí es importante configurar correctamente si es un mensaje propio
+                        // Esto podría ser parte del problema si no está configurado correctamente
+                        var userId = await _authService.GetUserIdAsync();
+                        message.IsOwnMessage = message.SenderId == userId;
+
                         if (message.IsOwnMessage)
                         {
-                            // For own messages
+                            // Para mensajes propios
                             message.Status = message.IsRead ? Constants.MessageStatus.Read :
                                 Constants.MessageStatus.Delivered;
                         }

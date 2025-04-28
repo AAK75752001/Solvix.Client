@@ -53,6 +53,7 @@ namespace Solvix.Client.Core.Models
                     else
                         _cachedOtherParticipant = Participants.FirstOrDefault(p => p.Id != userId);
 
+                    // Importante: No modificar el estado aquí, solo cachearlo
                     _propertiesInitialized = true;
                     return _cachedOtherParticipant;
                 }

@@ -153,22 +153,36 @@ namespace Solvix.Client.MVVM.ViewModels
                 _logger.LogInformation("Loading chat with ID: {ChatId}", chatGuid);
                 IsLoading = true;
 
+                // Obtener el chat primero
                 var chat = await _chatService.GetChatAsync(chatGuid);
 
                 if (chat != null)
                 {
-                    _logger.LogInformation("Chat loaded successfully. Messages count: {Count}",
-                        chat.Messages?.Count ?? 0);
-
+                    // Asignar el chat al modelo
                     Chat = chat;
 
-                    // Asegurarse de que Messages está inicializado
+                    // Asegurarse que Messages está inicializado
                     if (Chat.Messages == null)
                     {
                         Chat.Messages = new ObservableCollection<MessageModel>();
                     }
 
-                    // Marcar los mensajes no leídos como leídos en segundo plano
+                    // Explícitamente cargar los mensajes
+                    var messages = await _chatService.GetMessagesAsync(chatGuid);
+
+                    // Limpiar mensajes existentes y añadir los nuevos
+                    await MainThread.InvokeOnMainThreadAsync(() => {
+                        Chat.Messages.Clear();
+                        foreach (var message in messages)
+                        {
+                            Chat.Messages.Add(message);
+                        }
+
+                        _logger.LogInformation("Added {Count} messages to chat", messages.Count);
+                        OnPropertyChanged(nameof(Messages));
+                    });
+
+                    // Marcar mensajes como leídos
                     Task.Run(async () => await MarkUnreadMessagesAsReadAsync());
                 }
                 else

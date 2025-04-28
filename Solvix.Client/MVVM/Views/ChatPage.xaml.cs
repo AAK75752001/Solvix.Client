@@ -26,14 +26,14 @@ public partial class ChatPage : ContentPage
         {
             logger.LogError(ex, "Error initializing ChatPage");
 
-            // Create a simple UI to show the error
+            // Crear una UI simple para mostrar el error
             Content = new VerticalStackLayout
             {
                 Children =
-                {
-                    new Label { Text = "Error loading chat", FontSize = 20, HorizontalOptions = LayoutOptions.Center, Margin = new Thickness(0, 40, 0, 0) },
-                    new Label { Text = ex.Message, FontSize = 14, HorizontalOptions = LayoutOptions.Center, Margin = new Thickness(20) }
-                },
+            {
+                new Label { Text = "Error loading chat", FontSize = 20, HorizontalOptions = LayoutOptions.Center, Margin = new Thickness(0, 40, 0, 0) },
+                new Label { Text = ex.Message, FontSize = 14, HorizontalOptions = LayoutOptions.Center, Margin = new Thickness(20) }
+            },
                 VerticalOptions = LayoutOptions.Center
             };
         }
@@ -45,6 +45,12 @@ public partial class ChatPage : ContentPage
         {
             _logger.LogInformation("ChatPage OnAppearing");
             base.OnAppearing();
+
+            // Asegurarse que la carga de datos ocurre cuando la página aparece
+            if (!string.IsNullOrEmpty(_viewModel.ChatId))
+            {
+                _logger.LogInformation("Refreshing chat data on appearance");
+            }
         }
         catch (Exception ex)
         {
