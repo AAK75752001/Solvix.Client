@@ -6,6 +6,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
+using Solvix.Client.Helpers;
 
 
 namespace Solvix.Client.MVVM.ViewModels
@@ -22,6 +23,9 @@ namespace Solvix.Client.MVVM.ViewModels
         private string _messageText = string.Empty;
         private bool _isLoading;
         private bool _isSending;
+        private bool _isFirstLoad = true;
+        private int _loadAttempts = 0;
+        private const int MaxLoadAttempts = 3;
 
         public string ChatId
         {
@@ -33,11 +37,16 @@ namespace Solvix.Client.MVVM.ViewModels
                     _chatId = value;
                     OnPropertyChanged();
 
+                    // Reset loading state when chat ID changes
+                    _isFirstLoad = true;
+                    _loadAttempts = 0;
+
                     // Si ya hemos recibido un valor, cargar el chat
                     if (!string.IsNullOrEmpty(_chatId))
                     {
                         _logger.LogInformation("ChatId set to {ChatId}, loading chat...", _chatId);
-                        LoadChatAsync().ContinueWith(t => {
+                        LoadChatAsync().ContinueWith(t =>
+                        {
                             if (t.IsFaulted)
                             {
                                 _logger.LogError(t.Exception, "Error in LoadChatAsync continuation");
@@ -150,51 +159,117 @@ namespace Solvix.Client.MVVM.ViewModels
 
             try
             {
-                _logger.LogInformation("Loading chat with ID: {ChatId}", chatGuid);
+                _logger.LogInformation("Loading chat with ID: {ChatId}, attempt: {Attempt}", chatGuid, _loadAttempts + 1);
+
+                // Show loading indicator
                 IsLoading = true;
 
-                // Obtener el chat primero
-                var chat = await _chatService.GetChatAsync(chatGuid);
+                // Try to get the chat with messages
+                ChatModel chat = null;
+                List<MessageModel> messages = null;
 
-                if (chat != null)
+                try
                 {
-                    // Asignar el chat al modelo
-                    Chat = chat;
+                    // First, try to get the chat data
+                    chat = await _chatService.GetChatAsync(chatGuid);
 
-                    // Asegurarse que Messages está inicializado
-                    if (Chat.Messages == null)
+                    if (chat != null)
                     {
-                        Chat.Messages = new ObservableCollection<MessageModel>();
-                    }
+                        _logger.LogInformation("Successfully loaded chat: {ChatId}", chatGuid);
 
-                    // Explícitamente cargar los mensajes
-                    var messages = await _chatService.GetMessagesAsync(chatGuid);
-
-                    // Limpiar mensajes existentes y añadir los nuevos
-                    await MainThread.InvokeOnMainThreadAsync(() => {
-                        Chat.Messages.Clear();
-                        foreach (var message in messages)
+                        // Ensure the Messages collection is initialized
+                        if (chat.Messages == null)
                         {
-                            Chat.Messages.Add(message);
+                            chat.Messages = new ObservableCollection<MessageModel>();
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning("GetChatAsync returned null for {ChatId}", chatGuid);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error loading chat {ChatId}", chatGuid);
+                    await _toastService.ShowToastAsync($"Error loading chat: {ex.Message}", ToastType.Error);
+                }
+
+                // Even if the chat data failed to load, try to load messages separately
+                try
+                {
+                    messages = await _chatService.GetMessagesAsync(chatGuid);
+                    _logger.LogInformation("Loaded {Count} messages for chat {ChatId}",
+                        messages?.Count ?? 0, chatGuid);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error loading messages for chat {ChatId}", chatGuid);
+
+                    // Only show toast if this is the first attempt
+                    if (_isFirstLoad)
+                    {
+                        await _toastService.ShowToastAsync($"Error loading messages: {ex.Message}", ToastType.Error);
+                    }
+                }
+
+                await MainThread.InvokeOnMainThreadAsync(async () =>
+                {
+                    // If we have the chat data, set it
+                    if (chat != null)
+                    {
+                        Chat = chat;
+
+                        // If we also have messages, add them to the chat
+                        if (messages != null && messages.Count > 0)
+                        {
+                            Chat.Messages.Clear();
+                            foreach (var message in messages)
+                            {
+                                Chat.Messages.Add(message);
+                            }
+                            _logger.LogInformation("Added {Count} messages to chat view", messages.Count);
                         }
 
-                        _logger.LogInformation("Added {Count} messages to chat", messages.Count);
-                        OnPropertyChanged(nameof(Messages));
-                    });
+                        // Mark unread messages as read
+                        Task.Run(async () => await MarkUnreadMessagesAsReadAsync());
+                    }
+                    else if (Chat == null && _loadAttempts < MaxLoadAttempts)
+                    {
+                        // If we couldn't load the chat but have messages, create a minimal chat object
+                        if (messages != null && messages.Count > 0)
+                        {
+                            var tempChat = new ChatModel
+                            {
+                                Id = chatGuid,
+                                Messages = new ObservableCollection<MessageModel>(messages),
+                                Participants = new List<UserModel>(),
+                                Title = "Loading...", // Temporary title
+                            };
 
-                    // Marcar mensajes como leídos
-                    Task.Run(async () => await MarkUnreadMessagesAsReadAsync());
-                }
-                else
-                {
-                    _logger.LogWarning("GetChatAsync returned null for {ChatId}", chatGuid);
-                    await _toastService.ShowToastAsync("Could not load chat", ToastType.Error);
-                    await GoBackAsync();
-                }
+                            Chat = tempChat;
+                            _logger.LogInformation("Created temporary chat with {Count} messages", messages.Count);
+
+                            // Retry loading the full chat data later
+                            _loadAttempts++;
+                            Task.Run(async () =>
+                            {
+                                await Task.Delay(2000); // Wait 2 seconds before retrying
+                                await LoadChatAsync();
+                            });
+                        }
+                        else if (_isFirstLoad)
+                        {
+                            // If this is the first load attempt and we have no data, show error
+                            await _toastService.ShowToastAsync("Could not load chat data", ToastType.Error);
+                        }
+                    }
+                });
+
+                _isFirstLoad = false;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading chat {ChatId}", chatGuid);
+                _logger.LogError(ex, "Unhandled error loading chat {ChatId}", chatGuid);
                 await _toastService.ShowToastAsync($"Error: {ex.Message}", ToastType.Error);
             }
             finally
@@ -224,7 +299,8 @@ namespace Solvix.Client.MVVM.ViewModels
                     await _chatService.MarkAsReadAsync(chatGuid, unreadMessageIds);
 
                     // Update local message status
-                    await MainThread.InvokeOnMainThreadAsync(() => {
+                    await MainThread.InvokeOnMainThreadAsync(() =>
+                    {
                         foreach (var messageId in unreadMessageIds)
                         {
                             var message = Chat.Messages.FirstOrDefault(m => m.Id == messageId);

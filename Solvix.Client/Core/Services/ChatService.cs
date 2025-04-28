@@ -11,17 +11,20 @@ namespace Solvix.Client.Core.Services
         private readonly IApiService _apiService;
         private readonly IToastService _toastService;
         private readonly ISignalRService _signalRService;
+        private readonly IAuthService _authService; // Added this dependency
         private readonly ILogger<ChatService> _logger;
 
         public ChatService(
             IApiService apiService,
             IToastService toastService,
             ISignalRService signalRService,
+            IAuthService authService, // Added this parameter
             ILogger<ChatService> logger)
         {
             _apiService = apiService;
             _toastService = toastService;
             _signalRService = signalRService;
+            _authService = authService; // Initialize the field
             _logger = logger;
         }
 
@@ -223,10 +226,10 @@ namespace Solvix.Client.Core.Services
 
                 var endpoint = $"{Constants.Endpoints.GetMessages}/{chatId}/messages";
                 var queryParams = new Dictionary<string, string>
-        {
-            { "skip", skip.ToString() },
-            { "take", take.ToString() }
-        };
+                {
+                    { "skip", skip.ToString() },
+                    { "take", take.ToString() }
+                };
 
                 var messages = await _apiService.GetAsync<List<MessageModel>>(endpoint, queryParams);
 
@@ -235,17 +238,19 @@ namespace Solvix.Client.Core.Services
                     _logger.LogInformation("Successfully retrieved {Count} messages for chat {ChatId}",
                         messages.Count, chatId);
 
+                    // Get current user ID for ownership check
+                    var currentUserId = await _authService.GetUserIdAsync();
+
                     // Set the initial status for all messages
                     foreach (var message in messages)
                     {
-                        // Aquí es importante configurar correctamente si es un mensaje propio
-                        // Esto podría ser parte del problema si no está configurado correctamente
-                        var userId = await _authService.GetUserIdAsync();
-                        message.IsOwnMessage = message.SenderId == userId;
+                        // We can't directly set IsOwnMessage as it's a read-only property
+                        // Instead we'll compare sender ID with current user ID on each message
+                        var isOwnMessage = message.SenderId == currentUserId;
 
-                        if (message.IsOwnMessage)
+                        if (isOwnMessage)
                         {
-                            // Para mensajes propios
+                            // For own messages
                             message.Status = message.IsRead ? Constants.MessageStatus.Read :
                                 Constants.MessageStatus.Delivered;
                         }
@@ -289,6 +294,10 @@ namespace Solvix.Client.Core.Services
                     SentAt = DateTime.UtcNow,
                     Status = Constants.MessageStatus.Sending
                 };
+
+                // Get current user ID
+                var userId = await _authService.GetUserIdAsync();
+                pendingMessage.SenderId = userId;
 
                 // Use mock data temporarily for testing UI
 #if DEBUG

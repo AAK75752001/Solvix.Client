@@ -36,8 +36,39 @@ namespace Solvix.Client.Core.Models
         {
             get
             {
-                var currentUserId = SecureStorage.GetAsync(Constants.StorageKeys.UserId).Result;
-                return long.TryParse(currentUserId, out var userId) && userId == SenderId;
+                try
+                {
+                    // Get the current user ID from secure storage
+                    var currentUserIdTask = SecureStorage.GetAsync(Constants.StorageKeys.UserId);
+
+                    // If the task is already completed, get the result directly
+                    if (currentUserIdTask.IsCompleted)
+                    {
+                        var currentUserId = currentUserIdTask.Result;
+                        return !string.IsNullOrEmpty(currentUserId) &&
+                               long.TryParse(currentUserId, out var userId) &&
+                               userId == SenderId;
+                    }
+
+                    // If the task is not completed yet, we have to make a synchronous wait
+                    // This is not ideal but necessary for this property
+                    var timeoutTask = Task.Delay(500); // 500ms timeout
+                    if (Task.WhenAny(currentUserIdTask, timeoutTask).Result == currentUserIdTask)
+                    {
+                        var currentUserId = currentUserIdTask.Result;
+                        return !string.IsNullOrEmpty(currentUserId) &&
+                               long.TryParse(currentUserId, out var userId) &&
+                               userId == SenderId;
+                    }
+
+                    // If we timed out, return false (safer default)
+                    return false;
+                }
+                catch
+                {
+                    // In case of any error, default to false
+                    return false;
+                }
             }
         }
 
