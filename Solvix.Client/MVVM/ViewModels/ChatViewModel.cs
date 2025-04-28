@@ -22,6 +22,7 @@ namespace Solvix.Client.MVVM.ViewModels
         private bool _isLoading;
         private bool _isSending;
         private bool _noMessages = false;
+        private ObservableCollection<MessageModel> _messages = new();
 
         public string ChatId
         {
@@ -36,6 +37,7 @@ namespace Solvix.Client.MVVM.ViewModels
                     // Load chat when ChatId is set
                     if (!string.IsNullOrEmpty(_chatId))
                     {
+                        _logger.LogInformation("ChatId set to {ChatId}, loading chat...", _chatId);
                         LoadChatAsync().ConfigureAwait(false);
                     }
                 }
@@ -51,20 +53,27 @@ namespace Solvix.Client.MVVM.ViewModels
                 {
                     _chat = value;
                     OnPropertyChanged();
-                    OnPropertyChanged(nameof(Messages));
+
+                    // If chat messages exist, update our messages collection
+                    if (_chat?.Messages != null && _chat.Messages.Count > 0)
+                    {
+                        Messages = new ObservableCollection<MessageModel>(_chat.Messages);
+                    }
                 }
             }
         }
 
         public ObservableCollection<MessageModel> Messages
         {
-            get
+            get => _messages;
+            set
             {
-                if (Chat?.Messages == null)
+                if (_messages != value)
                 {
-                    return new ObservableCollection<MessageModel>();
+                    _messages = value;
+                    OnPropertyChanged();
+                    NoMessages = _messages.Count == 0;
                 }
-                return Chat.Messages;
             }
         }
 
@@ -149,6 +158,8 @@ namespace Solvix.Client.MVVM.ViewModels
             _signalRService.OnMessageReceived += OnMessageReceived;
             _signalRService.OnMessageRead += OnMessageRead;
             _signalRService.OnUserStatusChanged += OnUserStatusChanged;
+
+            _logger.LogInformation("ChatViewModel initialized");
         }
 
         private async Task LoadChatAsync()
@@ -162,7 +173,7 @@ namespace Solvix.Client.MVVM.ViewModels
             if (!Guid.TryParse(ChatId, out var chatGuid))
             {
                 _logger.LogError("Invalid ChatId format: {ChatId}", ChatId);
-                await _toastService.ShowToastAsync("Invalid chat ID", ToastType.Error);
+                await _toastService.ShowToastAsync("شناسه چت نامعتبر است", ToastType.Error);
                 return;
             }
 
@@ -172,7 +183,7 @@ namespace Solvix.Client.MVVM.ViewModels
 
                 _logger.LogInformation("Loading chat with ID: {ChatId}", chatGuid);
 
-                // First, try to get chat details
+                // First load chat details
                 var chat = await _chatService.GetChatAsync(chatGuid);
                 if (chat == null)
                 {
@@ -180,7 +191,7 @@ namespace Solvix.Client.MVVM.ViewModels
                     await MainThread.InvokeOnMainThreadAsync(async () =>
                     {
                         IsLoading = false;
-                        await _toastService.ShowToastAsync("Chat not found", ToastType.Error);
+                        await _toastService.ShowToastAsync("چت یافت نشد", ToastType.Error);
                     });
                     return;
                 }
@@ -192,36 +203,52 @@ namespace Solvix.Client.MVVM.ViewModels
 
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
-                    // Initialize chat messages collection if needed
-                    if (chat.Messages == null)
+                    try
                     {
-                        chat.Messages = new ObservableCollection<MessageModel>();
-                    }
-                    else
-                    {
-                        chat.Messages.Clear();
-                    }
+                        // Set the chat
+                        Chat = chat;
 
-                    // Add loaded messages
-                    if (messages != null && messages.Count > 0)
-                    {
-                        foreach (var message in messages)
+                        // Clear any existing messages
+                        if (chat.Messages == null)
                         {
-                            chat.Messages.Add(message);
+                            chat.Messages = new ObservableCollection<MessageModel>();
                         }
-                        NoMessages = false;
+                        else
+                        {
+                            chat.Messages.Clear();
+                        }
+
+                        // Add loaded messages to the chat
+                        if (messages != null && messages.Count > 0)
+                        {
+                            foreach (var message in messages)
+                            {
+                                chat.Messages.Add(message);
+                            }
+
+                            // Update our view model's message collection
+                            Messages = new ObservableCollection<MessageModel>(messages);
+                            NoMessages = false;
+
+                            _logger.LogInformation("Added {Count} messages to UI", messages.Count);
+                        }
+                        else
+                        {
+                            NoMessages = true;
+                            _logger.LogWarning("No messages to display");
+                        }
+
+                        // Set loading to false
+                        IsLoading = false;
+
+                        // Mark unread messages as read
+                        MarkUnreadMessagesAsReadAsync().ConfigureAwait(false);
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        NoMessages = true;
+                        _logger.LogError(ex, "Error processing loaded chat data");
+                        IsLoading = false;
                     }
-
-                    Chat = chat;
-
-                    // Mark unread messages as read
-                    MarkUnreadMessagesAsReadAsync().ConfigureAwait(false);
-
-                    IsLoading = false;
                 });
             }
             catch (Exception ex)
@@ -231,7 +258,7 @@ namespace Solvix.Client.MVVM.ViewModels
                 await MainThread.InvokeOnMainThreadAsync(async () =>
                 {
                     IsLoading = false;
-                    await _toastService.ShowToastAsync($"Error loading chat: {ex.Message}", ToastType.Error);
+                    await _toastService.ShowToastAsync($"خطا در بارگیری چت: {ex.Message}", ToastType.Error);
                 });
             }
         }
@@ -245,7 +272,7 @@ namespace Solvix.Client.MVVM.ViewModels
             try
             {
                 // Find unread messages that are not sent by the current user
-                var unreadMessageIds = Chat.Messages
+                var unreadMessageIds = Messages
                     .Where(m => !m.IsOwnMessage && !m.IsRead)
                     .Select(m => m.Id)
                     .ToList();
@@ -260,7 +287,7 @@ namespace Solvix.Client.MVVM.ViewModels
                     // Update local message status
                     foreach (var messageId in unreadMessageIds)
                     {
-                        var message = Chat.Messages.FirstOrDefault(m => m.Id == messageId);
+                        var message = Messages.FirstOrDefault(m => m.Id == messageId);
                         if (message != null)
                         {
                             message.IsRead = true;
@@ -291,6 +318,9 @@ namespace Solvix.Client.MVVM.ViewModels
             {
                 await MainThread.InvokeOnMainThreadAsync(() => IsSending = true);
 
+                _logger.LogInformation("Sending message to chat {ChatId}: {MessageText}",
+                    chatGuid, messageText);
+
                 // Create temporary message for immediate display
                 var tempMessage = new MessageModel
                 {
@@ -299,54 +329,75 @@ namespace Solvix.Client.MVVM.ViewModels
                     SentAt = DateTime.UtcNow,
                     ChatId = chatGuid,
                     SenderId = await _chatService.GetCurrentUserIdAsync(),
-                    SenderName = "You", // Will be replaced by server response
-                    Status = Constants.MessageStatus.Sending
+                    SenderName = "شما", // Will be replaced by server response
+                    Status = Constants.MessageStatus.Sending,
+                    SentAtFormatted = DateTime.UtcNow.ToString("HH:mm")
                 };
 
                 // Add to local messages immediately
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
+                    // Add to chat messages collection
                     if (Chat.Messages == null)
                     {
                         Chat.Messages = new ObservableCollection<MessageModel>();
                     }
                     Chat.Messages.Add(tempMessage);
+
+                    // Add to view model's messages collection
+                    Messages.Add(tempMessage);
                     NoMessages = false;
+
+                    // Force UI update
                     OnPropertyChanged(nameof(Messages));
                 });
 
                 // Send the message to the server
-                _logger.LogInformation("Sending message to chat {ChatId}: {MessageText}",
-                    chatGuid, messageText);
-
                 var message = await _chatService.SendMessageAsync(chatGuid, messageText);
 
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     if (message != null)
                     {
-                        // Remove temporary message
-                        var tempMsg = Chat.Messages.FirstOrDefault(m => m.Id == tempMessage.Id);
+                        // Try to find and remove the temporary message
+                        var tempMsg = Messages.FirstOrDefault(m => m.Id == tempMessage.Id);
                         if (tempMsg != null)
                         {
-                            Chat.Messages.Remove(tempMsg);
+                            Messages.Remove(tempMsg);
+
+                            // Also remove from chat's messages if it exists there
+                            if (Chat?.Messages != null)
+                            {
+                                var chatTempMsg = Chat.Messages.FirstOrDefault(m => m.Id == tempMessage.Id);
+                                if (chatTempMsg != null)
+                                {
+                                    Chat.Messages.Remove(chatTempMsg);
+                                }
+                            }
                         }
 
                         // Add the confirmed message from server
-                        Chat.Messages.Add(message);
+                        Messages.Add(message);
+
+                        // Also add to chat's messages
+                        if (Chat?.Messages != null)
+                        {
+                            Chat.Messages.Add(message);
+                        }
+
                         _logger.LogInformation("Message sent successfully, server ID: {MessageId}", message.Id);
                     }
                     else
                     {
                         // Mark the temporary message as failed
-                        var tempMsg = Chat.Messages.FirstOrDefault(m => m.Id == tempMessage.Id);
+                        var tempMsg = Messages.FirstOrDefault(m => m.Id == tempMessage.Id);
                         if (tempMsg != null)
                         {
                             tempMsg.Status = Constants.MessageStatus.Failed;
-                            _logger.LogWarning("Failed to send message");
                         }
 
-                        _toastService.ShowToastAsync("Failed to send message", ToastType.Error)
+                        _logger.LogWarning("Failed to send message");
+                        _toastService.ShowToastAsync("پیام ارسال نشد", ToastType.Error)
                             .ConfigureAwait(false);
                     }
 
@@ -361,7 +412,7 @@ namespace Solvix.Client.MVVM.ViewModels
                 await MainThread.InvokeOnMainThreadAsync(async () =>
                 {
                     IsSending = false;
-                    await _toastService.ShowToastAsync($"Error sending message: {ex.Message}", ToastType.Error);
+                    await _toastService.ShowToastAsync($"خطا در ارسال پیام: {ex.Message}", ToastType.Error);
                 });
             }
         }
@@ -383,7 +434,7 @@ namespace Solvix.Client.MVVM.ViewModels
             if (Chat?.OtherParticipant == null)
                 return;
 
-            await _toastService.ShowToastAsync("Profile view will be available in a future update", ToastType.Info);
+            await _toastService.ShowToastAsync("نمایش پروفایل در نسخه‌های آینده فعال خواهد شد", ToastType.Info);
         }
 
         private void OnMessageReceived(MessageModel message)
@@ -395,25 +446,40 @@ namespace Solvix.Client.MVVM.ViewModels
             {
                 try
                 {
+                    _logger.LogInformation("Received message {MessageId} for chat {ChatId}",
+                        message.Id, message.ChatId);
+
                     // Check if this message already exists in our collection
-                    var existingMessage = Chat.Messages?.FirstOrDefault(m => m.Id == message.Id);
+                    var existingMessage = Messages.FirstOrDefault(m => m.Id == message.Id);
 
                     if (existingMessage != null)
                     {
                         // Replace the existing message
-                        var index = Chat.Messages.IndexOf(existingMessage);
-                        Chat.Messages[index] = message;
+                        var index = Messages.IndexOf(existingMessage);
+                        Messages[index] = message;
+
+                        // Also update in chat's messages if it exists there
+                        if (Chat?.Messages != null)
+                        {
+                            var chatExistingMsg = Chat.Messages.FirstOrDefault(m => m.Id == message.Id);
+                            if (chatExistingMsg != null)
+                            {
+                                var chatIndex = Chat.Messages.IndexOf(chatExistingMsg);
+                                Chat.Messages[chatIndex] = message;
+                            }
+                        }
                     }
                     else
                     {
                         // Add the new message
-                        if (Chat.Messages == null)
-                        {
-                            Chat.Messages = new ObservableCollection<MessageModel>();
-                        }
-
-                        Chat.Messages.Add(message);
+                        Messages.Add(message);
                         NoMessages = false;
+
+                        // Also add to chat's messages
+                        if (Chat?.Messages != null)
+                        {
+                            Chat.Messages.Add(message);
+                        }
 
                         // Mark message as read immediately if it's not from current user
                         if (!message.IsOwnMessage)
@@ -440,12 +506,27 @@ namespace Solvix.Client.MVVM.ViewModels
             {
                 try
                 {
-                    var message = Chat.Messages?.FirstOrDefault(m => m.Id == messageId);
+                    _logger.LogInformation("Message {MessageId} in chat {ChatId} marked as read",
+                        messageId, chatId);
+
+                    var message = Messages.FirstOrDefault(m => m.Id == messageId);
                     if (message != null)
                     {
                         message.IsRead = true;
                         message.ReadAt = DateTime.UtcNow;
                         message.Status = Constants.MessageStatus.Read;
+
+                        // Also update in chat's messages if it exists there
+                        if (Chat?.Messages != null)
+                        {
+                            var chatMsg = Chat.Messages.FirstOrDefault(m => m.Id == messageId);
+                            if (chatMsg != null)
+                            {
+                                chatMsg.IsRead = true;
+                                chatMsg.ReadAt = DateTime.UtcNow;
+                                chatMsg.Status = Constants.MessageStatus.Read;
+                            }
+                        }
 
                         OnPropertyChanged(nameof(Messages));
                     }
@@ -465,6 +546,9 @@ namespace Solvix.Client.MVVM.ViewModels
                 {
                     try
                     {
+                        _logger.LogInformation("User {UserId} status changed: Online = {IsOnline}, LastActive = {LastActive}",
+                            userId, isOnline, lastActive);
+
                         Chat.OtherParticipant.IsOnline = isOnline;
                         Chat.OtherParticipant.LastActive = lastActive;
 

@@ -3,10 +3,15 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:viewmodels="clr-namespace:Solvix.Client.MVVM.ViewModels"
              xmlns:models="clr-namespace:Solvix.Client.Core.Models"
+             xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
              x:Class="Solvix.Client.MVVM.Views.ChatPage"
              x:DataType="viewmodels:ChatViewModel"
              Shell.NavBarIsVisible="False"
              BackgroundColor="{DynamicResource PageBackgroundColor}">
+
+    <ContentPage.Resources>
+        <toolkit:InvertedBoolConverter x:Key="InvertedBoolConverter" />
+    </ContentPage.Resources>
 
     <Grid RowDefinitions="Auto,*,Auto">
         <!-- Header -->
@@ -56,7 +61,7 @@
 
                     <!-- User Info -->
                     <VerticalStackLayout Spacing="0" VerticalOptions="Center">
-                        <Label Text="{Binding Chat.DisplayTitle, TargetNullValue='Chat'}" 
+                        <Label Text="{Binding Chat.DisplayTitle, TargetNullValue='چت'}" 
                                TextColor="White" 
                                FontAttributes="Bold" 
                                FontSize="16" />
@@ -102,27 +107,22 @@
         <CollectionView Grid.Row="1" 
                        ItemsSource="{Binding Messages}"
                        Margin="0,10,0,0"
-                       ItemsUpdatingScrollMode="KeepLastItemInView"
-                       EmptyView="No messages yet">
-
-            <CollectionView.ItemsLayout>
-                <LinearItemsLayout Orientation="Vertical" ItemSpacing="8" />
-            </CollectionView.ItemsLayout>
+                       ItemsUpdatingScrollMode="KeepLastItemInView">
 
             <CollectionView.EmptyView>
-                <Grid IsVisible="{Binding IsLoading, Converter={StaticResource InverseBoolConverter}}">
+                <Grid IsVisible="{Binding IsLoading, Converter={StaticResource InvertedBoolConverter}}">
                     <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center">
                         <Image Source="empty_chat.png" HeightRequest="150" WidthRequest="150" Opacity="0.7" 
                                IsVisible="False"/>
                         <!-- Hidden until you have the image -->
 
-                        <Label Text="No messages yet" 
+                        <Label Text="هنوز پیامی وجود ندارد" 
                                FontSize="18" 
                                TextColor="{DynamicResource SecondaryTextColor}" 
                                HorizontalOptions="Center" 
                                Margin="0,20,0,0" />
 
-                        <Label Text="Start the conversation by sending a message" 
+                        <Label Text="با ارسال پیام، گفتگو را شروع کنید" 
                                FontSize="14" 
                                TextColor="{DynamicResource TertiaryTextColor}" 
                                HorizontalOptions="Center" 
@@ -202,7 +202,7 @@
                         BackgroundColor="{DynamicResource PageBackgroundColor}"
                         Padding="5,0">
                     <Entry Text="{Binding MessageText}"
-                           Placeholder="Type a message..."
+                           Placeholder="پیام خود را بنویسید..."
                            PlaceholderColor="{DynamicResource TertiaryTextColor}"
                            TextColor="{DynamicResource PrimaryTextColor}"
                            BackgroundColor="Transparent"
@@ -211,7 +211,7 @@
                 </Border>
 
                 <Button Grid.Column="1"
-                        Text="Send"
+                        Text="ارسال"
                         Command="{Binding SendMessageCommand}"
                         IsEnabled="{Binding CanSendMessage}"
                         BackgroundColor="{DynamicResource PrimaryColor}"
@@ -245,7 +245,7 @@
                                    Color="{DynamicResource PrimaryColor}" 
                                    HeightRequest="40" 
                                    WidthRequest="40" />
-                <Label Text="Loading messages..." 
+                <Label Text="در حال بارگیری پیام‌ها..." 
                        TextColor="{DynamicResource PrimaryTextColor}" 
                        FontSize="14" 
                        HorizontalOptions="Center" />

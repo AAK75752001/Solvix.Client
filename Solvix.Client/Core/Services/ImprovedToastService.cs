@@ -183,56 +183,84 @@ namespace Solvix.Client.Core.Services
         private AbsoluteLayout EnsureToastLayoutExists(Page page)
         {
             // Look for existing toast layout
-            var contentView = page.Content;
-
-            // If content is already a Grid with our toast layout, use it
-            if (contentView is Grid grid)
+            var toastLayout = FindExistingToastLayout(page);
+            if (toastLayout != null)
             {
-                foreach (var child in grid.Children)
-                {
-                    if (child is AbsoluteLayout layout && layout.StyleId == "ToastLayout")
-                    {
-                        return layout;
-                    }
-                }
-
-                // Create new toast layout and add to existing grid
-                var toastLayout = new AbsoluteLayout
-                {
-                    StyleId = "ToastLayout",
-                    InputTransparent = true // Let input events pass through
-                };
-
-                // Add as overlay
-                Grid.SetRowSpan(toastLayout, grid.RowDefinitions.Count > 0 ? grid.RowDefinitions.Count : 1);
-                Grid.SetColumnSpan(toastLayout, grid.ColumnDefinitions.Count > 0 ? grid.ColumnDefinitions.Count : 1);
-
-                grid.Children.Add(toastLayout);
                 return toastLayout;
             }
 
-            // Otherwise, wrap the current content in a Grid with our toast layout
-            var newGrid = new Grid();
-
-            // Set the original content in the grid
-            if (contentView != null)
-            {
-                newGrid.Children.Add(contentView);
-            }
-
-            // Add toast layout overlay
-            var newToastLayout = new AbsoluteLayout
+            // Create a new toast layout
+            toastLayout = new AbsoluteLayout
             {
                 StyleId = "ToastLayout",
-                InputTransparent = true
+                InputTransparent = true, // Let input events pass through
+                HorizontalOptions = LayoutOptions.Fill,
+                VerticalOptions = LayoutOptions.Fill
             };
 
-            newGrid.Children.Add(newToastLayout);
+            // Add the toast layout as an overlay
+            if (page is ContentPage contentPage)
+            {
+                var originalContent = contentPage.Content;
 
-            // Replace page content
-            page.Content = newGrid;
+                // If the content is null, create a Grid with just the toast layout
+                if (originalContent == null)
+                {
+                    contentPage.Content = new Grid
+                    {
+                        Children = { toastLayout }
+                    };
+                    return toastLayout;
+                }
 
-            return newToastLayout;
+                // If the content is already a Grid, add the toast layout to it
+                if (originalContent is Grid grid)
+                {
+                    // Set the toast layout to span all rows and columns
+                    if (grid.RowDefinitions.Count > 0)
+                    {
+                        Grid.SetRowSpan(toastLayout, grid.RowDefinitions.Count);
+                    }
+                    if (grid.ColumnDefinitions.Count > 0)
+                    {
+                        Grid.SetColumnSpan(toastLayout, grid.ColumnDefinitions.Count);
+                    }
+
+                    grid.Children.Add(toastLayout);
+                    return toastLayout;
+                }
+
+                // Wrap the original content in a Grid with the toast layout
+                var wrapperGrid = new Grid
+                {
+                    Children = { originalContent, toastLayout }
+                };
+                contentPage.Content = wrapperGrid;
+            }
+
+            return toastLayout;
+        }
+
+        private AbsoluteLayout FindExistingToastLayout(Page page)
+        {
+            if (page is ContentPage contentPage)
+            {
+                var content = contentPage.Content;
+
+                // If content is a Grid, search for the toast layout
+                if (content is Grid grid)
+                {
+                    foreach (var child in grid.Children)
+                    {
+                        if (child is AbsoluteLayout layout && layout.StyleId == "ToastLayout")
+                        {
+                            return layout;
+                        }
+                    }
+                }
+            }
+
+            return null;
         }
 
         private class ToastInfo
