@@ -30,7 +30,11 @@ namespace Solvix.Client.MVVM.ViewModels
                 {
                     _chatId = value;
                     OnPropertyChanged();
-                    LoadChatAsync().ConfigureAwait(false);
+                    // Si ya hemos recibido un valor, cargar el chat
+                    if (!string.IsNullOrEmpty(_chatId))
+                    {
+                        LoadChatAsync().ConfigureAwait(false);
+                    }
                 }
             }
         }

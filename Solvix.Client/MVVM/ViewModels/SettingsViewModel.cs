@@ -111,55 +111,37 @@ namespace Solvix.Client.MVVM.ViewModels
                 IsLoading = true;
                 _logger.LogInformation("Loading settings and user info");
 
-                // Load theme first
+                // Cargar tema primero
                 SelectedTheme = _settingsService.GetTheme();
-                _logger.LogInformation("Theme loaded: {Theme}", SelectedTheme);
 
-                // Short delay to allow UI to render
-                await Task.Delay(100);
-
-                // Create a mock current user if we're on localhost (for testing)
-#if DEBUG
-                if (Constants.BaseApiUrl.Contains("localhost"))
-                {
-                    CurrentUser = new UserModel
+                // Usar Task.Run para operaciones de red y evitar bloquear la UI
+                await Task.Run(async () => {
+                    try
                     {
-                        Id = 1,
-                        FirstName = "Current",
-                        LastName = "User",
-                        PhoneNumber = "09111222333",
-                        IsOnline = true
-                    };
+                        // Cargar información del usuario
+                        var user = await _authService.GetCurrentUserAsync();
 
-                    _logger.LogInformation("Created mock user for testing");
-
-                    // Add short delay to simulate loading for testing UI
-                    await Task.Delay(500);
-                    IsLoading = false;
-                    return;
-                }
-#endif
-
-                // Load user info
-                var user = await _authService.GetCurrentUserAsync();
-                if (user != null)
-                {
-                    CurrentUser = user;
-                    _logger.LogInformation("User info loaded: {Username}", user.Username);
-                }
-                else
-                {
-                    _logger.LogWarning("Failed to load user info");
-                    await _toastService.ShowToastAsync("Unable to load user information", ToastType.Warning);
-                }
+                        await MainThread.InvokeOnMainThreadAsync(() => {
+                            if (user != null)
+                            {
+                                CurrentUser = user;
+                                _logger.LogInformation("User info loaded: {Username}", user.Username);
+                            }
+                            IsLoading = false;
+                        });
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error loading user data in background");
+                        await MainThread.InvokeOnMainThreadAsync(() => {
+                            IsLoading = false;
+                        });
+                    }
+                });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error loading settings");
-                await _toastService.ShowToastAsync("Error loading settings", ToastType.Error);
-            }
-            finally
-            {
                 IsLoading = false;
             }
         }

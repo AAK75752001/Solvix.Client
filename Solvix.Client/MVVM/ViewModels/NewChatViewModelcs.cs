@@ -29,6 +29,16 @@ namespace Solvix.Client.MVVM.ViewModels
                     _searchQuery = value;
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(CanSearch));
+
+                    // Búsqueda en tiempo real si hay al menos 2 caracteres
+                    if (value.Length >= 2 && !IsSearching)
+                    {
+                        SearchUsersAsync().ConfigureAwait(false);
+                    }
+                    else if (string.IsNullOrWhiteSpace(value))
+                    {
+                        ClearSearch();
+                    }
                 }
             }
         }

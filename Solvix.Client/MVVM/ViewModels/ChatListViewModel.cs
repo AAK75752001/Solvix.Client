@@ -293,14 +293,21 @@ namespace Solvix.Client.MVVM.ViewModels
         {
             if (chat == null) return;
 
-            var navigationParameter = new Dictionary<string, object>
+            try
             {
-                { "ChatId", chat.Id }
-            };
+                var navigationParameter = new Dictionary<string, object>
+        {
+            { "ChatId", chat.Id.ToString() } // Convertir Guid a String explícitamente
+        };
 
-            await Shell.Current.GoToAsync($"{nameof(ChatPage)}", navigationParameter);
+                await Shell.Current.GoToAsync($"{nameof(ChatPage)}", navigationParameter);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error navigating to chat {ChatId}", chat.Id);
+                await _toastService.ShowToastAsync($"Error opening chat: {ex.Message}", ToastType.Error);
+            }
         }
-
         private void OnMessageReceived(MessageModel message)
         {
             // Find the chat this message belongs to
@@ -355,25 +362,26 @@ namespace Solvix.Client.MVVM.ViewModels
 
         private void OnUserStatusChanged(long userId, bool isOnline, DateTime? lastActive)
         {
-            // Find chats with this user
+            // Encontrar chats con este usuario
             var affectedChats = Chats.Where(c =>
                 !c.IsGroup && c.Participants.Any(p => p.Id == userId)
             ).ToList();
 
             if (affectedChats.Any())
             {
-                foreach (var chat in affectedChats)
-                {
-                    var participant = chat.Participants.FirstOrDefault(p => p.Id == userId);
-                    if (participant != null)
+                MainThread.BeginInvokeOnMainThread(() => {
+                    foreach (var chat in affectedChats)
                     {
-                        participant.IsOnline = isOnline;
-                        participant.LastActive = lastActive;
-
-                        // Update UI properties
-                        OnPropertyChanged(nameof(FilteredChats));
+                        var participant = chat.Participants.FirstOrDefault(p => p.Id == userId);
+                        if (participant != null)
+                        {
+                            participant.IsOnline = isOnline;
+                            participant.LastActive = lastActive;
+                        }
                     }
-                }
+                    // Forzar actualización de UI
+                    FilterChats();
+                });
             }
         }
 

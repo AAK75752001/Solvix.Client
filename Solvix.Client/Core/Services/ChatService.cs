@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Solvix.Client.Core.Interfaces;
 using Solvix.Client.Core.Models;
+using System.Text.Json;
 
 namespace Solvix.Client.Core.Services
 {
@@ -135,44 +136,78 @@ namespace Solvix.Client.Core.Services
                 {
                     try
                     {
-                        // تبدیل صریح به نوع مورد نیاز بدون استفاده از عملگر !=
-                        string chatIdStr = response.chatId.ToString();
-                        bool alreadyExists = false;
-
-                        if (response.alreadyExists != null)
+                        // Deserializar la respuesta como string y luego usar JsonDocument para parsearla
+                        string responseJson = System.Text.Json.JsonSerializer.Serialize(response);
+                        using (JsonDocument doc = JsonDocument.Parse(responseJson))
                         {
-                            bool.TryParse(response.alreadyExists.ToString(), out alreadyExists);
-                        }
+                            JsonElement root = doc.RootElement;
 
-                        if (Guid.TryParse(chatIdStr, out Guid chatId))
-                        {
-                            if (alreadyExists)
+                            if (root.TryGetProperty("chatId", out JsonElement chatIdElement) &&
+                                chatIdElement.ValueKind != JsonValueKind.Null)
                             {
-                                _logger.LogInformation("Returning to existing chat {ChatId}", chatId);
-                                await _toastService.ShowToastAsync("Returning to existing conversation", ToastType.Info);
-                            }
-                            else
-                            {
-                                _logger.LogInformation("New chat started with ID {ChatId}", chatId);
-                                await _toastService.ShowToastAsync("New conversation started", ToastType.Success);
-                            }
+                                string chatIdStr = chatIdElement.ToString();
 
-                            return chatId;
+                                bool alreadyExists = false;
+                                if (root.TryGetProperty("alreadyExists", out JsonElement alreadyExistsElement) &&
+                                    alreadyExistsElement.ValueKind == JsonValueKind.True)
+                                {
+                                    alreadyExists = true;
+                                }
+
+                                if (Guid.TryParse(chatIdStr, out Guid chatId))
+                                {
+                                    if (alreadyExists)
+                                    {
+                                        _logger.LogInformation("Returning to existing chat {ChatId}", chatId);
+                                        await _toastService.ShowToastAsync("Returning to existing conversation", ToastType.Info);
+                                    }
+                                    else
+                                    {
+                                        _logger.LogInformation("New chat started with ID {ChatId}", chatId);
+                                        await _toastService.ShowToastAsync("New conversation started", ToastType.Success);
+                                    }
+
+                                    return chatId;
+                                }
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Error parsing chat start response for user {UserId}", userId);
+
+                        // Intenta otra aproximación
+                        try
+                        {
+                            // Intenta extraer directamente desde el response como string
+                            var responseStr = response.ToString();
+                            if (responseStr.Contains("chatId"))
+                            {
+                                // Busca el formato "chatId":"GUID"
+                                int start = responseStr.IndexOf("chatId") + 9; // Longitud de "chatId":"
+                                int end = responseStr.IndexOf("\"", start);
+                                if (start > 9 && end > start)
+                                {
+                                    string chatIdStr = responseStr.Substring(start, end - start);
+                                    if (Guid.TryParse(chatIdStr, out Guid chatId))
+                                    {
+                                        return chatId;
+                                    }
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // Ignora errores en este intento de fallback
+                        }
+
                         await _toastService.ShowToastAsync("Error starting chat: " + ex.Message, ToastType.Error);
                         return null;
                     }
                 }
-                else
-                {
-                    _logger.LogWarning("StartChatAsync returned null");
-                    await _toastService.ShowToastAsync("Unable to start chat. Please try again.", ToastType.Warning);
-                }
 
+                _logger.LogWarning("StartChatAsync returned null");
+                await _toastService.ShowToastAsync("Unable to start chat. Please try again.", ToastType.Warning);
                 return null;
             }
             catch (Exception ex)
