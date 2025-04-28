@@ -6,6 +6,8 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using Microsoft.Maui.ApplicationModel;
+using Microsoft.Maui.Controls;
 
 namespace Solvix.Client.MVVM.ViewModels
 {
@@ -174,7 +176,7 @@ namespace Solvix.Client.MVVM.ViewModels
                     }
                 }
 
-                // پیش‌محاسبه خصوصیت‌های محاسباتی برای هر چت
+                // Pre-compute calculated properties for each chat
                 foreach (var chat in chats)
                 {
                     if (chat != null)
@@ -196,11 +198,6 @@ namespace Solvix.Client.MVVM.ViewModels
                     {
                         Chats = new ObservableCollection<ChatModel>(sortedChats);
                         FilterChats();
-
-                        // به‌روزرسانی صریح حالت‌های UI
-                        OnPropertyChanged(nameof(HasChats));
-                        OnPropertyChanged(nameof(IsEmpty));
-                        OnPropertyChanged(nameof(FilteredChats));
                     }
                     catch (Exception ex)
                     {
@@ -220,7 +217,7 @@ namespace Solvix.Client.MVVM.ViewModels
                 // Generate mock data for better UX
                 var mockChats = GenerateMockChats();
 
-                // پیش‌محاسبه خصوصیت‌های محاسباتی برای چت‌های مصنوعی
+                // Pre-compute calculated properties for mock chats
                 foreach (var chat in mockChats)
                 {
                     if (chat != null)
@@ -237,10 +234,6 @@ namespace Solvix.Client.MVVM.ViewModels
                         await _toastService.ShowToastAsync("Failed to load chats: " + ex.Message, ToastType.Error);
                         Chats = new ObservableCollection<ChatModel>(mockChats);
                         FilterChats();
-
-                        OnPropertyChanged(nameof(HasChats));
-                        OnPropertyChanged(nameof(IsEmpty));
-                        OnPropertyChanged(nameof(FilteredChats));
                     }
                     catch (Exception innerEx)
                     {
@@ -259,6 +252,19 @@ namespace Solvix.Client.MVVM.ViewModels
         {
             try
             {
+                // Log online status of each user in each chat
+                foreach (var chat in Chats)
+                {
+                    foreach (var participant in chat.Participants)
+                    {
+                        _logger.LogDebug("User {UserId} ({Username}) in chat {ChatId}: IsOnline = {IsOnline}",
+                            participant.Id,
+                            participant.Username,
+                            chat.Id,
+                            participant.IsOnline);
+                    }
+                }
+
                 if (string.IsNullOrEmpty(SearchQuery))
                 {
                     FilteredChats = new ObservableCollection<ChatModel>(Chats);
@@ -277,14 +283,15 @@ namespace Solvix.Client.MVVM.ViewModels
                     FilteredChats = new ObservableCollection<ChatModel>(filteredList);
                 }
 
-                // صریحاً property changed را فراخوانی می‌کنیم
+                // Explicitly call property changed to update UI
                 OnPropertyChanged(nameof(HasChats));
                 OnPropertyChanged(nameof(IsEmpty));
+                OnPropertyChanged(nameof(FilteredChats));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error filtering chats");
-                // در صورت خطا، همه چت‌ها را نمایش می‌دهیم
+                // En caso de error, mostrar todos los chats
                 FilteredChats = new ObservableCollection<ChatModel>(Chats);
             }
         }
@@ -296,9 +303,9 @@ namespace Solvix.Client.MVVM.ViewModels
             try
             {
                 var navigationParameter = new Dictionary<string, object>
-        {
-            { "ChatId", chat.Id.ToString() } // Convertir Guid a String explícitamente
-        };
+            {
+                { "ChatId", chat.Id.ToString() } // Convertir Guid a String explícitamente
+            };
 
                 await Shell.Current.GoToAsync($"{nameof(ChatPage)}", navigationParameter);
             }
@@ -308,6 +315,7 @@ namespace Solvix.Client.MVVM.ViewModels
                 await _toastService.ShowToastAsync($"Error opening chat: {ex.Message}", ToastType.Error);
             }
         }
+
         private void OnMessageReceived(MessageModel message)
         {
             // Find the chat this message belongs to
@@ -369,18 +377,38 @@ namespace Solvix.Client.MVVM.ViewModels
 
             if (affectedChats.Any())
             {
-                MainThread.BeginInvokeOnMainThread(() => {
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    bool anyChanges = false;
+
                     foreach (var chat in affectedChats)
                     {
                         var participant = chat.Participants.FirstOrDefault(p => p.Id == userId);
                         if (participant != null)
                         {
-                            participant.IsOnline = isOnline;
-                            participant.LastActive = lastActive;
+                            _logger.LogInformation("Updating status for user {UserId} from {OldStatus} to {NewStatus}",
+                                userId, participant.IsOnline, isOnline);
+
+                            if (participant.IsOnline != isOnline || participant.LastActive != lastActive)
+                            {
+                                participant.IsOnline = isOnline;
+                                participant.LastActive = lastActive;
+                                anyChanges = true;
+                            }
                         }
                     }
-                    // Forzar actualización de UI
-                    FilterChats();
+
+                    if (anyChanges)
+                    {
+                        // Actualización explícita de la UI
+                        OnPropertyChanged(nameof(Chats));
+                        OnPropertyChanged(nameof(FilteredChats));
+
+                        // Forzar refresh completo
+                        var tempChats = new ObservableCollection<ChatModel>(Chats);
+                        Chats = tempChats;
+                        FilterChats();
+                    }
                 });
             }
         }
@@ -393,12 +421,12 @@ namespace Solvix.Client.MVVM.ViewModels
 
             // Create some mock users
             var users = new List<UserModel>
-            {
-                new UserModel { Id = 2, FirstName = "John", LastName = "Doe", PhoneNumber = "09123456789", IsOnline = true },
-                new UserModel { Id = 3, FirstName = "Jane", LastName = "Smith", PhoneNumber = "09187654321", IsOnline = false, LastActive = DateTime.UtcNow.AddHours(-2) },
-                new UserModel { Id = 4, FirstName = "Mike", LastName = "Johnson", PhoneNumber = "09123123123", IsOnline = true },
-                new UserModel { Id = 5, FirstName = "Sarah", LastName = "Williams", PhoneNumber = "09456456456", IsOnline = false, LastActive = DateTime.UtcNow.AddDays(-1) }
-            };
+        {
+            new UserModel { Id = 2, FirstName = "John", LastName = "Doe", PhoneNumber = "09123456789", IsOnline = true },
+            new UserModel { Id = 3, FirstName = "Jane", LastName = "Smith", PhoneNumber = "09187654321", IsOnline = false, LastActive = DateTime.UtcNow.AddHours(-2) },
+            new UserModel { Id = 4, FirstName = "Mike", LastName = "Johnson", PhoneNumber = "09123123123", IsOnline = true },
+            new UserModel { Id = 5, FirstName = "Sarah", LastName = "Williams", PhoneNumber = "09456456456", IsOnline = false, LastActive = DateTime.UtcNow.AddDays(-1) }
+        };
 
             // Create mock chats with these users
             for (int i = 0; i < users.Count; i++)
@@ -419,12 +447,12 @@ namespace Solvix.Client.MVVM.ViewModels
                     LastMessageTime = lastMessageTime,
                     UnreadCount = i % 2 == 0 ? random.Next(0, 5) : 0,
                     Participants = new List<UserModel>
-                    { 
-                        // Add current user
-                        new UserModel { Id = 1, FirstName = "Current", LastName = "User", PhoneNumber = "09111222333", IsOnline = true },
-                        // Add the chat participant
-                        user
-                    }
+                { 
+                    // Add current user
+                    new UserModel { Id = 1, FirstName = "Current", LastName = "User", PhoneNumber = "09111222333", IsOnline = true },
+                    // Add the chat participant
+                    user
+                }
                 };
 
                 mockChats.Add(mockChat);

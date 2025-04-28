@@ -230,28 +230,28 @@
 
         <!-- Loading Indicator -->
         <Border Grid.Row="1"
-                IsVisible="{Binding IsLoading}"
-                HorizontalOptions="Center"
-                VerticalOptions="Center"
-                StrokeThickness="0"
-                StrokeShape="RoundRectangle 12,12,12,12"
-                BackgroundColor="{DynamicResource CardBackgroundColor}"
-                Padding="20">
+        IsVisible="{Binding IsLoading}"
+        HorizontalOptions="Center"
+        VerticalOptions="Center"
+        StrokeThickness="0"
+        StrokeShape="RoundRectangle 12,12,12,12"
+        BackgroundColor="{DynamicResource CardBackgroundColor}"
+        Padding="20">
             <Border.Shadow>
                 <Shadow Brush="{DynamicResource ShadowColor}"
-                        Offset="0,3"
-                        Opacity="0.2"
-                        Radius="10" />
+                Offset="0,3"
+                Opacity="0.2"
+                Radius="10" />
             </Border.Shadow>
             <VerticalStackLayout Spacing="10">
                 <ActivityIndicator IsRunning="{Binding IsLoading}" 
-                                   Color="{DynamicResource PrimaryColor}" 
-                                   HeightRequest="40" 
-                                   WidthRequest="40" />
+                           Color="{DynamicResource PrimaryColor}" 
+                           HeightRequest="40" 
+                           WidthRequest="40" />
                 <Label Text="Loading chat..." 
-                       TextColor="{DynamicResource PrimaryTextColor}" 
-                       FontSize="14" 
-                       HorizontalOptions="Center" />
+               TextColor="{DynamicResource PrimaryTextColor}" 
+               FontSize="14" 
+               HorizontalOptions="Center" />
             </VerticalStackLayout>
         </Border>
     </Grid>

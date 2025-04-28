@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using Solvix.Client.Core.Interfaces;
 using Solvix.Client.Core.Models;
+using System.Collections.ObjectModel;
 using System.Text.Json;
 
 namespace Solvix.Client.Core.Services
@@ -70,37 +71,45 @@ namespace Solvix.Client.Core.Services
             }
         }
 
+        // En ChatService.cs
         public async Task<ChatModel?> GetChatAsync(Guid chatId)
         {
             try
             {
                 _logger.LogInformation("Fetching chat {ChatId}", chatId);
 
-                // Use mock data temporarily for testing UI
-#if DEBUG
-                if (Constants.BaseApiUrl.Contains("localhost"))
-                {
-                    var mockChat = GenerateMockChat(chatId);
-                    return mockChat;
-                }
-#endif
-
                 var endpoint = $"{Constants.Endpoints.GetChat}/{chatId}";
                 var chat = await _apiService.GetAsync<ChatModel>(endpoint);
 
                 if (chat != null)
                 {
-                    // Load messages for this chat
+                    // Asegurar que Participants y Messages están inicializados
+                    chat.Participants ??= new List<UserModel>();
+                    chat.Messages ??= new ObservableCollection<MessageModel>();
+
+                    // Log del estado de los participantes
+                    foreach (var participant in chat.Participants)
+                    {
+                        _logger.LogDebug("Participant {UserId} ({Username}): IsOnline = {IsOnline}",
+                            participant.Id, participant.Username, participant.IsOnline);
+                    }
+
+                    // Cargar mensajes para este chat
                     var messages = await GetMessagesAsync(chatId);
 
-                    // Add messages to the chat
+                    // Añadir mensajes al chat
                     foreach (var message in messages)
                     {
                         chat.Messages.Add(message);
                     }
 
+                    // Inicializar propiedades calculadas
+                    chat.InitializeComputedProperties();
+
                     _logger.LogInformation("Successfully retrieved chat {ChatId} with {MessageCount} messages",
                         chatId, chat.Messages.Count);
+
+                    return chat;
                 }
                 else
                 {
@@ -112,8 +121,7 @@ namespace Solvix.Client.Core.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to load chat {ChatId}", chatId);
-                await _toastService.ShowToastAsync("Failed to load chat: " + ex.Message, ToastType.Error);
-                return null;
+                throw;
             }
         }
 

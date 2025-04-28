@@ -36,11 +36,18 @@ namespace Solvix.Client.Core.Models
                     var currentUserIdTask = SecureStorage.GetAsync(Constants.StorageKeys.UserId);
                     string currentUserId = null;
 
-                    // اجتناب از استفاده از await برای جلوگیری از مسدود شدن UI
+                    // Evitar bloquear el hilo UI
                     if (currentUserIdTask.IsCompleted)
                         currentUserId = currentUserIdTask.Result;
+                    else
+                    {
+                        // Si la tarea no está completa, esperar pero con timeout
+                        var timeoutTask = Task.Delay(500); // 500ms timeout
+                        if (Task.WhenAny(currentUserIdTask, timeoutTask).Result == currentUserIdTask)
+                            currentUserId = currentUserIdTask.Result;
+                    }
 
-                    // اگر نتوانستیم ID کاربر را بگیریم، اولین شرکت‌کننده را برمی‌گردانیم
+                    // Si no podemos obtener el ID del usuario, devolver el primer participante
                     if (string.IsNullOrEmpty(currentUserId) || !long.TryParse(currentUserId, out var userId))
                         _cachedOtherParticipant = Participants.FirstOrDefault();
                     else
@@ -51,7 +58,7 @@ namespace Solvix.Client.Core.Models
                 }
                 catch
                 {
-                    // در صورت خطا، اولین شرکت‌کننده را برمی‌گردانیم
+                    // En caso de error, devolver el primer participante
                     return Participants.FirstOrDefault();
                 }
             }

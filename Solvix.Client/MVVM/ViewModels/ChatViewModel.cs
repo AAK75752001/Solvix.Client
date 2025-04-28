@@ -10,7 +10,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Solvix.Client.MVVM.ViewModels
 {
-    [QueryProperty(nameof(ChatId), "ChatId")]
     public class ChatViewModel : INotifyPropertyChanged
     {
         private readonly IChatService _chatService;
@@ -33,10 +32,17 @@ namespace Solvix.Client.MVVM.ViewModels
                 {
                     _chatId = value;
                     OnPropertyChanged();
+
                     // Si ya hemos recibido un valor, cargar el chat
                     if (!string.IsNullOrEmpty(_chatId))
                     {
-                        LoadChatAsync().ConfigureAwait(false);
+                        _logger.LogInformation("ChatId set to {ChatId}, loading chat...", _chatId);
+                        LoadChatAsync().ContinueWith(t => {
+                            if (t.IsFaulted)
+                            {
+                                _logger.LogError(t.Exception, "Error in LoadChatAsync continuation");
+                            }
+                        });
                     }
                 }
             }
@@ -51,6 +57,7 @@ namespace Solvix.Client.MVVM.ViewModels
                 {
                     _chat = value;
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(Messages));
                 }
             }
         }
@@ -98,26 +105,22 @@ namespace Solvix.Client.MVVM.ViewModels
 
         public bool CanSendMessage => !string.IsNullOrWhiteSpace(MessageText) && !IsSending;
 
-        public ObservableCollection<MessageModel> Messages
-        {
-            get
-            {
-                if (Chat?.Messages == null)
-                {
-                    return new ObservableCollection<MessageModel>();
-                }
-                return Chat.Messages;
-            }
-        }
+        public ObservableCollection<MessageModel> Messages => Chat?.Messages ?? new ObservableCollection<MessageModel>();
+
         public ICommand SendMessageCommand { get; }
         public ICommand BackCommand { get; }
         public ICommand ViewProfileCommand { get; }
 
-        public ChatViewModel(IChatService chatService, ISignalRService signalRService, IToastService toastService)
+        public ChatViewModel(
+            IChatService chatService,
+            ISignalRService signalRService,
+            IToastService toastService,
+            ILogger<ChatViewModel> logger)
         {
             _chatService = chatService;
             _signalRService = signalRService;
             _toastService = toastService;
+            _logger = logger;
 
             SendMessageCommand = new Command(async () => await SendMessageAsync(), () => CanSendMessage);
             BackCommand = new Command(async () => await GoBackAsync());
@@ -131,41 +134,53 @@ namespace Solvix.Client.MVVM.ViewModels
 
         private async Task LoadChatAsync()
         {
-            if (string.IsNullOrEmpty(ChatId) || !Guid.TryParse(ChatId, out var chatGuid))
+            if (string.IsNullOrEmpty(ChatId))
+            {
+                _logger.LogWarning("ChatId is empty, cannot load chat");
                 return;
+            }
+
+            if (!Guid.TryParse(ChatId, out var chatGuid))
+            {
+                _logger.LogError("Invalid ChatId format: {ChatId}", ChatId);
+                await _toastService.ShowToastAsync("Invalid chat ID format", ToastType.Error);
+                await GoBackAsync();
+                return;
+            }
 
             try
             {
+                _logger.LogInformation("Loading chat with ID: {ChatId}", chatGuid);
                 IsLoading = true;
 
                 var chat = await _chatService.GetChatAsync(chatGuid);
 
                 if (chat != null)
                 {
+                    _logger.LogInformation("Chat loaded successfully. Messages count: {Count}",
+                        chat.Messages?.Count ?? 0);
+
                     Chat = chat;
 
-                    // Marcar los mensajes como leídos en segundo plano
-                    Task.Run(async () =>
+                    // Asegurarse de que Messages está inicializado
+                    if (Chat.Messages == null)
                     {
-                        try
-                        {
-                            await MarkUnreadMessagesAsReadAsync();
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Error marking messages as read");
-                        }
-                    });
+                        Chat.Messages = new ObservableCollection<MessageModel>();
+                    }
+
+                    // Marcar los mensajes no leídos como leídos en segundo plano
+                    Task.Run(async () => await MarkUnreadMessagesAsReadAsync());
                 }
                 else
                 {
-                    await _toastService.ShowToastAsync("Failed to load chat", ToastType.Error);
+                    _logger.LogWarning("GetChatAsync returned null for {ChatId}", chatGuid);
+                    await _toastService.ShowToastAsync("Could not load chat", ToastType.Error);
                     await GoBackAsync();
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error loading chat {ChatId}: {Message}", ChatId, ex.Message);
+                _logger.LogError(ex, "Error loading chat {ChatId}", chatGuid);
                 await _toastService.ShowToastAsync($"Error: {ex.Message}", ToastType.Error);
             }
             finally
@@ -174,9 +189,51 @@ namespace Solvix.Client.MVVM.ViewModels
             }
         }
 
+        private async Task MarkUnreadMessagesAsReadAsync()
+        {
+            if (Chat == null || string.IsNullOrEmpty(ChatId) || !Guid.TryParse(ChatId, out var chatGuid))
+                return;
+
+            try
+            {
+                // Find unread messages that are not from the current user
+                var unreadMessageIds = Chat.Messages
+                    .Where(m => !m.IsOwnMessage && !m.IsRead)
+                    .Select(m => m.Id)
+                    .ToList();
+
+                if (unreadMessageIds.Count > 0)
+                {
+                    _logger.LogInformation("Marking {Count} messages as read", unreadMessageIds.Count);
+
+                    // Mark as read on the server
+                    await _chatService.MarkAsReadAsync(chatGuid, unreadMessageIds);
+
+                    // Update local message status
+                    await MainThread.InvokeOnMainThreadAsync(() => {
+                        foreach (var messageId in unreadMessageIds)
+                        {
+                            var message = Chat.Messages.FirstOrDefault(m => m.Id == messageId);
+                            if (message != null)
+                            {
+                                message.IsRead = true;
+                                message.ReadAt = DateTime.UtcNow;
+                            }
+                        }
+                        OnPropertyChanged(nameof(Messages));
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error marking messages as read");
+            }
+        }
+
         private async Task SendMessageAsync()
         {
-            if (!CanSendMessage || !Guid.TryParse(ChatId, out var chatGuid))
+            if (!CanSendMessage || string.IsNullOrEmpty(ChatId) ||
+                !Guid.TryParse(ChatId, out var chatGuid))
                 return;
 
             var messageContent = MessageText;
@@ -196,10 +253,9 @@ namespace Solvix.Client.MVVM.ViewModels
                     Status = Constants.MessageStatus.Sending
                 };
 
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    Chat.Messages.Add(tempMessage);
-                });
+                // Add to UI
+                Chat.Messages.Add(tempMessage);
+                OnPropertyChanged(nameof(Messages));
 
                 // Send the message
                 var message = await _chatService.SendMessageAsync(chatGuid, messageContent);
@@ -207,33 +263,24 @@ namespace Solvix.Client.MVVM.ViewModels
                 if (message != null)
                 {
                     // Update or replace the temporary message
-                    MainThread.BeginInvokeOnMainThread(() =>
+                    var index = Chat.Messages.IndexOf(tempMessage);
+                    if (index >= 0)
                     {
-                        var index = Chat.Messages.IndexOf(tempMessage);
-                        if (index >= 0)
-                        {
-                            Chat.Messages[index] = message;
-                        }
-                    });
+                        Chat.Messages[index] = message;
+                        OnPropertyChanged(nameof(Messages));
+                    }
                 }
                 else
                 {
                     // Mark the temporary message as failed
-                    MainThread.BeginInvokeOnMainThread(() =>
-                    {
-                        tempMessage.Status = Constants.MessageStatus.Failed;
-                        var index = Chat.Messages.IndexOf(tempMessage);
-                        if (index >= 0)
-                        {
-                            Chat.Messages[index] = tempMessage;
-                        }
-                    });
-
+                    tempMessage.Status = Constants.MessageStatus.Failed;
+                    OnPropertyChanged(nameof(Messages));
                     await _toastService.ShowToastAsync("Failed to send message", ToastType.Error);
                 }
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Error sending message: {Message}", ex.Message);
                 await _toastService.ShowToastAsync($"Error: {ex.Message}", ToastType.Error);
             }
             finally
@@ -242,47 +289,16 @@ namespace Solvix.Client.MVVM.ViewModels
             }
         }
 
-        private async Task MarkUnreadMessagesAsReadAsync()
+        private async Task GoBackAsync()
         {
-            if (Chat == null || !Guid.TryParse(ChatId, out var chatGuid))
-                return;
-
             try
             {
-                // Encontrar mensajes no leídos que no son del usuario actual
-                var unreadMessageIds = Chat.Messages
-                    .Where(m => !m.IsOwnMessage && !m.IsRead)
-                    .Select(m => m.Id)
-                    .ToList();
-
-                if (unreadMessageIds.Count > 0)
-                {
-                    // Marcar como leídos
-                    await _chatService.MarkAsReadAsync(chatGuid, unreadMessageIds);
-
-                    // Actualizar localmente
-                    await MainThread.InvokeOnMainThreadAsync(() => {
-                        foreach (var message in Chat.Messages)
-                        {
-                            if (unreadMessageIds.Contains(message.Id))
-                            {
-                                message.IsRead = true;
-                                message.ReadAt = DateTime.UtcNow;
-                            }
-                        }
-                    });
-                }
+                await Shell.Current.GoToAsync("..");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error marking messages as read");
-                // No mostrar toast para no interrumpir la experiencia
+                _logger.LogError(ex, "Error navigating back from chat page");
             }
-        }
-
-        private async Task GoBackAsync()
-        {
-            await Shell.Current.GoToAsync("..");
         }
 
         private async Task ViewProfileAsync()
@@ -295,7 +311,7 @@ namespace Solvix.Client.MVVM.ViewModels
 
         private void OnMessageReceived(MessageModel message)
         {
-            if (Chat == null || message.ChatId != Guid.Parse(ChatId))
+            if (Chat == null || !string.IsNullOrEmpty(ChatId) && message.ChatId.ToString() != ChatId)
                 return;
 
             // Add or update the message in the chat
@@ -318,15 +334,17 @@ namespace Solvix.Client.MVVM.ViewModels
                     // Mark as read immediately if it's not our own message
                     if (!message.IsOwnMessage)
                     {
-                        MarkUnreadMessagesAsReadAsync().ConfigureAwait(false);
+                        Task.Run(async () => await MarkUnreadMessagesAsReadAsync());
                     }
                 }
+
+                OnPropertyChanged(nameof(Messages));
             });
         }
 
         private void OnMessageRead(Guid chatId, int messageId)
         {
-            if (Chat == null || chatId != Guid.Parse(ChatId))
+            if (Chat == null || string.IsNullOrEmpty(ChatId) || chatId.ToString() != ChatId)
                 return;
 
             // Find the message and update its read status
@@ -341,11 +359,7 @@ namespace Solvix.Client.MVVM.ViewModels
                     message.Status = Constants.MessageStatus.Read;
 
                     // Refresh the message in the collection to update the UI
-                    var index = Chat.Messages.IndexOf(message);
-                    if (index >= 0)
-                    {
-                        Chat.Messages[index] = message;
-                    }
+                    OnPropertyChanged(nameof(Messages));
                 }
             });
         }
