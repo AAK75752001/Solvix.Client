@@ -165,14 +165,16 @@
                                     <Label Text="{Binding TimeText}" 
                            TextColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='SecondaryTextColor'}" 
                            FontSize="12"
-                           VerticalOptions="Center" />
+                           VerticalOptions="Center"
+                           Opacity="0.8" />
 
                                     <!-- Status Icon (Only for own messages) -->
                                     <Label Text="{Binding StatusIcon}"
                            IsVisible="{Binding IsOwnMessage}"
                            TextColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='SecondaryTextColor'}" 
                            FontSize="16"
-                           FontFamily="MaterialIcons"
+                           Opacity="{Binding IsFailed, Converter={StaticResource InverseBoolConverter}, ConverterParameter='0.8', FallbackValue='0.8'}"
+                           TextColor="{Binding IsFailed, Converter={StaticResource BoolToColorConverter}, ConverterParameter='Error', FallbackValue={StaticResource SecondaryTextColor}}"
                            VerticalOptions="Center" />
                                 </HorizontalStackLayout>
                             </Grid>

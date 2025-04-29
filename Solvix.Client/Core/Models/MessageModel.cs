@@ -18,6 +18,9 @@ namespace Solvix.Client.Core.Models
 
         // Local properties for UI
         [JsonIgnore]
+        public DateTime LocalSentAt => SentAt.ToLocalTime();
+
+        [JsonIgnore]
         public int Status { get; set; } = Constants.MessageStatus.Sending;
 
         [JsonIgnore]
@@ -26,14 +29,18 @@ namespace Solvix.Client.Core.Models
         [JsonIgnore]
         public bool IsSent => Status >= Constants.MessageStatus.Sent;
 
+
         [JsonIgnore]
         public bool IsDelivered => Status >= Constants.MessageStatus.Delivered;
+
 
         [JsonIgnore]
         public bool IsReadByReceiver => Status >= Constants.MessageStatus.Read;
 
+
         [JsonIgnore]
         public bool IsFailed => Status == Constants.MessageStatus.Failed;
+
 
         [JsonIgnore]
         public bool IsOwnMessage
@@ -84,9 +91,27 @@ namespace Solvix.Client.Core.Models
         }
 
         [JsonIgnore]
-        public string TimeText => string.IsNullOrEmpty(SentAtFormatted)
-            ? SentAt.ToString("HH:mm")
-            : SentAtFormatted;
+        public string TimeText
+        {
+            get
+            {
+                if (!string.IsNullOrEmpty(SentAtFormatted))
+                    return SentAtFormatted;
+
+                try
+                {
+                    // زمان سرور را به زمان محلی تبدیل می‌کنیم
+                    var localTime = LocalSentAt;
+                    return localTime.ToString("HH:mm");
+                }
+                catch
+                {
+                    // در صورت خطا از فرمت ساده استفاده می‌کنیم
+                    return SentAt.ToString("HH:mm");
+                }
+            }
+        }
+
 
         [JsonIgnore]
         public string StatusIcon
@@ -97,17 +122,18 @@ namespace Solvix.Client.Core.Models
                     return "❌"; // Unicode error symbol
 
                 if (IsReadByReceiver)
-                    return "✓✓"; // Unicode double check mark
+                    return "✓✓"; // Unicode double check mark for read
 
                 if (IsDelivered)
-                    return "✓"; // Unicode double check mark
+                    return "✓"; // Unicode check mark for delivered
 
                 if (IsSent)
-                    return "✓"; // Unicode check mark
+                    return "✓"; // Unicode check mark for sent
 
-                return "⏱"; // Unicode watch symbol
+                return "⏱"; // Unicode watch symbol for sending
             }
         }
+
     }
 
     public class SendMessageDto

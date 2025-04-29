@@ -18,6 +18,7 @@ namespace Solvix.Client.Core.Services
         private int _retryAttempts = 0;
         private const int MaxRetryAttempts = 3;
         private bool _isInitialized = false;
+        private bool _showConnectionErrors = false;
 
         public event Action<MessageModel> OnMessageReceived;
         public event Action<Guid, int> OnMessageRead;
@@ -132,11 +133,12 @@ namespace Solvix.Client.Core.Services
                         var message = new MessageModel
                         {
                             Id = messageId,
+                            Content = content,
+                            SentAt = sentAt,
                             SenderId = senderId,
                             SenderName = senderName,
-                            Content = content,
                             ChatId = chatId,
-                            SentAt = sentAt,
+                            IsRead = false,
                             Status = Constants.MessageStatus.Delivered
                         };
 
@@ -184,6 +186,7 @@ namespace Solvix.Client.Core.Services
                     _isConnected = true;
                     _logger.LogInformation("SignalR reconnected with ID: {ConnectionId}", connectionId);
                     _retryAttempts = 0; // Reset retry counter on successful reconnection
+                    _showConnectionErrors = false; // Reset error display flag
                     return Task.CompletedTask;
                 };
 
@@ -259,6 +262,7 @@ namespace Solvix.Client.Core.Services
 
                     _isConnected = true;
                     _retryAttempts = 0; // Reset retry counter on successful connection
+                    _showConnectionErrors = false; // Reset error display flag
                     _logger.LogInformation("Successfully connected to SignalR");
                 }
                 catch (OperationCanceledException)
@@ -277,7 +281,7 @@ namespace Solvix.Client.Core.Services
                             await ConnectAsync();
                         });
                     }
-                    else
+                    else if (_showConnectionErrors)
                     {
                         await MainThread.InvokeOnMainThreadAsync(async () => {
                             await _toastService.ShowToastAsync("Could not connect to chat service. Some features may be limited.", ToastType.Warning);
@@ -290,7 +294,7 @@ namespace Solvix.Client.Core.Services
                     _logger.LogError(ex, "Error connecting to SignalR");
 
                     // Don't show a toast for every retry - only show after max retries
-                    if (_retryAttempts >= MaxRetryAttempts)
+                    if (_retryAttempts >= MaxRetryAttempts && _showConnectionErrors)
                     {
                         await MainThread.InvokeOnMainThreadAsync(async () => {
                             await _toastService.ShowToastAsync("Could not connect to chat service. Some features may be limited.", ToastType.Warning);
@@ -362,32 +366,30 @@ namespace Solvix.Client.Core.Services
 
             try
             {
+                // Only attempt to send via SignalR if connected - otherwise just let the ChatService handle it via API
                 if (_hubConnection.State != HubConnectionState.Connected)
                 {
-                    _logger.LogInformation("Not connected to SignalR, attempting to connect before sending message");
-
-                    var connectTask = ConnectAsync();
-                    var timeoutTask = Task.Delay(2000); // Wait max 2 seconds for connection
-                    await Task.WhenAny(connectTask, timeoutTask);
-
-                    // If still not connected after attempt, use a fallback
-                    if (_hubConnection.State != HubConnectionState.Connected)
-                    {
-                        _logger.LogWarning("Cannot connect to SignalR, message will be sent via API only");
-                        return;
-                    }
+                    _logger.LogInformation("Not connected to SignalR, message will be sent via API only");
+                    return;
                 }
 
-                _logger.LogInformation("Sending message to chat {ChatId}", chatId);
-                await _hubConnection.InvokeAsync("SendToChat", chatId, message);
-                _logger.LogInformation("Message sent to chat {ChatId}", chatId);
+                _logger.LogInformation("Sending message to chat {ChatId} via SignalR", chatId);
+
+                // Use a timeout to prevent long waits
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+                await _hubConnection.InvokeAsync("SendToChat", chatId, message, cts.Token);
+
+                _logger.LogInformation("Message sent to chat {ChatId} via SignalR", chatId);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning("SignalR message sending timed out for chat {ChatId}", chatId);
+                // We don't rethrow here - the ChatService will still send via API
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error sending message to chat {ChatId}", chatId);
-
-                // We don't rethrow here - the app should continue even if SignalR fails
-                // The message will still be sent via the API in the ChatService
+                _logger.LogError(ex, "Error sending message to chat {ChatId} via SignalR", chatId);
+                // We don't rethrow here - the ChatService will still send via API
             }
         }
 
@@ -395,19 +397,23 @@ namespace Solvix.Client.Core.Services
         {
             try
             {
+                // Only try if connected - otherwise let the API handle it
                 if (_hubConnection.State != HubConnectionState.Connected)
                 {
                     _logger.LogInformation("Not connected to SignalR, marking read status via API only");
                     return;
                 }
 
-                _logger.LogInformation("Marking message {MessageId} as read", messageId);
-                await _hubConnection.InvokeAsync("MarkMessageAsRead", messageId);
-                _logger.LogInformation("Message {MessageId} marked as read", messageId);
+                _logger.LogInformation("Marking message {MessageId} as read via SignalR", messageId);
+
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                await _hubConnection.InvokeAsync("MarkMessageAsRead", messageId, cts.Token);
+
+                _logger.LogInformation("Message {MessageId} marked as read via SignalR", messageId);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error marking message {MessageId} as read", messageId);
+                _logger.LogError(ex, "Error marking message {MessageId} as read via SignalR", messageId);
                 // Don't rethrow as this is a background operation
             }
         }
@@ -422,21 +428,31 @@ namespace Solvix.Client.Core.Services
 
             try
             {
+                // Only try if connected - otherwise let the API handle it
                 if (_hubConnection.State != HubConnectionState.Connected)
                 {
                     _logger.LogInformation("Not connected to SignalR, marking read status via API only");
                     return;
                 }
 
-                _logger.LogInformation("Marking {Count} messages as read", messageIds.Count);
-                await _hubConnection.InvokeAsync("MarkMultipleMessagesAsRead", messageIds);
-                _logger.LogInformation("{Count} messages marked as read", messageIds.Count);
+                _logger.LogInformation("Marking {Count} messages as read via SignalR", messageIds.Count);
+
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                await _hubConnection.InvokeAsync("MarkMultipleMessagesAsRead", messageIds, cts.Token);
+
+                _logger.LogInformation("{Count} messages marked as read via SignalR", messageIds.Count);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error marking messages as read");
+                _logger.LogError(ex, "Error marking messages as read via SignalR");
                 // Don't rethrow as this is a background operation
             }
+        }
+
+        // Enable or disable showing connection errors to the user
+        public void SetShowConnectionErrors(bool show)
+        {
+            _showConnectionErrors = show;
         }
     }
 }

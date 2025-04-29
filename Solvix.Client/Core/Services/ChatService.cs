@@ -13,6 +13,7 @@ namespace Solvix.Client.Core.Services
         private readonly ISignalRService _signalRService;
         private readonly IAuthService _authService;
         private readonly ILogger<ChatService> _logger;
+        private readonly SemaphoreSlim _sendMessageLock = new SemaphoreSlim(1, 1);
 
         public ChatService(
             IApiService apiService,
@@ -27,6 +28,246 @@ namespace Solvix.Client.Core.Services
             _authService = authService;
             _logger = logger;
         }
+
+        public async Task<List<MessageModel>> GetMessagesAsync(Guid chatId, int skip = 0, int take = 50)
+        {
+            try
+            {
+                // First check cache if skip is 0 (initial load)
+                if (skip == 0)
+                {
+                    var cachedMessages = MessageCache.GetCachedMessages(chatId);
+                    if (cachedMessages != null && cachedMessages.Count > 0)
+                    {
+                        _logger.LogInformation("Using cached messages for chat {ChatId}, count: {Count}",
+                            chatId, cachedMessages.Count);
+                        return cachedMessages;
+                    }
+                    else
+                    {
+                        _logger.LogInformation("No cache found for chat {ChatId}, loading from server", chatId);
+                    }
+                }
+
+                _logger.LogInformation("Fetching messages for chat {ChatId}, skip={Skip}, take={Take}",
+                    chatId, skip, take);
+
+                var endpoint = $"{Constants.Endpoints.GetMessages}/{chatId}/messages";
+                var queryParams = new Dictionary<string, string>
+                {
+                    { "skip", skip.ToString() },
+                    { "take", take.ToString() }
+                };
+
+                var messages = await _apiService.GetAsync<List<MessageModel>>(endpoint, queryParams);
+
+                if (messages != null && messages.Count > 0)
+                {
+                    _logger.LogInformation("Retrieved {Count} messages for chat {ChatId}",
+                        messages.Count, chatId);
+
+                    // Get current user ID for message ownership determination
+                    var currentUserId = await GetCurrentUserIdAsync();
+
+                    // Update message status based on read state
+                    foreach (var message in messages)
+                    {
+                        // Check if this is the current user's message
+                        bool isOwnMessage = message.SenderId == currentUserId;
+                        message.IsOwnMessage = isOwnMessage;
+
+                        if (isOwnMessage)
+                        {
+                            // Set status for current user's messages
+                            message.Status = message.IsRead ?
+                                Constants.MessageStatus.Read :
+                                Constants.MessageStatus.Delivered;
+                        }
+
+                        // Set message time text for display
+                        message.SentAtFormatted = FormatMessageTime(message.SentAt);
+                    }
+
+                    // Cache the messages if this is the initial load
+                    if (skip == 0)
+                    {
+                        MessageCache.CacheMessages(chatId, messages);
+                        _logger.LogInformation("Cached {Count} messages for chat {ChatId}",
+                            messages.Count, chatId);
+                    }
+
+                    return messages;
+                }
+                else
+                {
+                    _logger.LogWarning("No messages found for chat {ChatId}", chatId);
+                    return new List<MessageModel>();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to load messages for chat {ChatId}", chatId);
+                return new List<MessageModel>();
+            }
+        }
+
+        public async Task<MessageModel?> SendMessageAsync(Guid chatId, string content)
+        {
+            bool lockTaken = false;
+            try
+            {
+                // Use a lock to prevent concurrent sends of the same message
+                await _sendMessageLock.WaitAsync();
+                lockTaken = true;
+
+                if (string.IsNullOrWhiteSpace(content))
+                {
+                    _logger.LogWarning("Attempted to send empty message to chat {ChatId}", chatId);
+                    await _toastService.ShowToastAsync("Cannot send empty message", ToastType.Warning);
+                    return null;
+                }
+
+                _logger.LogInformation("Sending message to chat {ChatId}", chatId);
+
+                // Coordinated approach: First send via SignalR for real-time delivery
+                Task signalRTask = _signalRService.SendMessageAsync(chatId, content);
+
+                // Create DTO for API call
+                var dto = new SendMessageDto
+                {
+                    ChatId = chatId,
+                    Content = content
+                };
+
+                // Make the API call to ensure persistence (this is the primary source of truth)
+                var response = await _apiService.PostAsync<MessageModel>(Constants.Endpoints.SendMessage, dto);
+
+                // Wait for the SignalR task to complete, but don't require success
+                try
+                {
+                    await signalRTask;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "SignalR message send failed, but API call succeeded");
+                    // This is not critical since we got a response from the API
+                }
+
+                if (response != null)
+                {
+                    _logger.LogInformation("Message sent successfully to chat {ChatId}, server ID: {MessageId}",
+                        chatId, response.Id);
+
+                    // Get current user ID for message ownership
+                    var currentUserId = await GetCurrentUserIdAsync();
+
+                    // Populate extra properties for UI
+                    response.Status = Constants.MessageStatus.Sent;
+                    response.SentAtFormatted = FormatMessageTime(response.SentAt);
+                    response.IsOwnMessage = response.SenderId == currentUserId;
+
+                    // Mark cache as invalid to ensure fresh data on next load
+                    MessageCache.InvalidateCache(chatId);
+
+                    return response;
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to send message to chat {ChatId}", chatId);
+                    await _toastService.ShowToastAsync("Message could not be sent", ToastType.Warning);
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending message to chat {ChatId}", chatId);
+                await _toastService.ShowToastAsync("Failed to send message: " + ex.Message, ToastType.Error);
+                return null;
+            }
+            finally
+            {
+                if (lockTaken)
+                {
+                    _sendMessageLock.Release();
+                }
+            }
+        }
+
+        public async Task MarkAsReadAsync(Guid chatId, List<int> messageIds)
+        {
+            if (messageIds == null || messageIds.Count == 0)
+            {
+                _logger.LogInformation("No messages to mark as read for chat {ChatId}", chatId);
+                return;
+            }
+
+            try
+            {
+                _logger.LogInformation("Marking {Count} messages as read in chat {ChatId}",
+                    messageIds.Count, chatId);
+
+                var endpoint = $"{Constants.Endpoints.MarkRead}/{chatId}/mark-read";
+                await _apiService.PostAsync<object>(endpoint, messageIds);
+
+                // Also mark via SignalR for real-time updates to other clients
+                await _signalRService.MarkMessagesAsReadAsync(messageIds);
+
+                _logger.LogInformation("Successfully marked messages as read in chat {ChatId}", chatId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to mark messages as read in chat {ChatId}", chatId);
+                // Don't show toast here as this is a background operation
+            }
+        }
+
+        #region Helper Methods
+
+        private string FormatMessageTime(DateTime dateTime)
+        {
+            try
+            {
+                // ساعت UTC دریافتی از سرور را به ساعت محلی تبدیل می‌کنیم
+                var localDateTime = dateTime.ToLocalTime();
+                var now = DateTime.Now;
+
+                // Today, show only time in 24-hour format
+                if (localDateTime.Date == now.Date)
+                {
+                    return localDateTime.ToString("HH:mm");
+                }
+                // Yesterday
+                else if (localDateTime.Date == now.Date.AddDays(-1))
+                {
+                    return "Yesterday " + localDateTime.ToString("HH:mm");
+                }
+                // Within the last week
+                else if ((now.Date - localDateTime.Date).TotalDays < 7)
+                {
+                    return localDateTime.ToString("ddd HH:mm"); // Day of week + time
+                }
+                // Older messages
+                else
+                {
+                    return localDateTime.ToString("yyyy-MM-dd HH:mm");
+                }
+            }
+            catch (Exception ex)
+            {
+                // در صورت بروز خطا، ساعت را مستقیماً نمایش می‌دهیم
+                try
+                {
+                    return dateTime.ToLocalTime().ToString("HH:mm");
+                }
+                catch
+                {
+                    // Fallback to simple time format if any error occurs
+                    return dateTime.ToString("HH:mm");
+                }
+            }
+        }
+
+        #endregion
 
         public async Task<long> GetCurrentUserIdAsync()
         {
@@ -220,210 +461,5 @@ namespace Solvix.Client.Core.Services
                 return null;
             }
         }
-
-        public async Task<List<MessageModel>> GetMessagesAsync(Guid chatId, int skip = 0, int take = 50)
-        {
-            try
-            {
-                // First check cache if skip is 0 (initial load)
-                if (skip == 0)
-                {
-                    var cachedMessages = MessageCache.GetCachedMessages(chatId);
-                    if (cachedMessages != null && cachedMessages.Count > 0)
-                    {
-                        _logger.LogInformation("Using cached messages for chat {ChatId}, count: {Count}",
-                            chatId, cachedMessages.Count);
-                        return cachedMessages;
-                    }
-                    else
-                    {
-                        _logger.LogInformation("No cache found for chat {ChatId}, loading from server", chatId);
-                    }
-                }
-
-                _logger.LogInformation("Fetching messages for chat {ChatId}, skip={Skip}, take={Take}",
-                    chatId, skip, take);
-
-                var endpoint = $"{Constants.Endpoints.GetMessages}/{chatId}/messages";
-                var queryParams = new Dictionary<string, string>
-        {
-            { "skip", skip.ToString() },
-            { "take", take.ToString() }
-        };
-
-                var messages = await _apiService.GetAsync<List<MessageModel>>(endpoint, queryParams);
-
-                if (messages != null && messages.Count > 0)
-                {
-                    _logger.LogInformation("Retrieved {Count} messages for chat {ChatId}",
-                        messages.Count, chatId);
-
-                    // Get current user ID for message ownership determination
-                    var currentUserId = await GetCurrentUserIdAsync();
-
-                    // Update message status based on read state
-                    foreach (var message in messages)
-                    {
-                        // Check if this is the current user's message
-                        bool isOwnMessage = message.SenderId == currentUserId;
-                        message.IsOwnMessage = isOwnMessage;
-
-                        if (isOwnMessage)
-                        {
-                            // Set status for current user's messages
-                            message.Status = message.IsRead ?
-                                Constants.MessageStatus.Read :
-                                Constants.MessageStatus.Delivered;
-                        }
-
-                        // Set message time text for display
-                        message.SentAtFormatted = FormatMessageTime(message.SentAt);
-                    }
-
-                    // Cache the messages if this is the initial load
-                    if (skip == 0)
-                    {
-                        MessageCache.CacheMessages(chatId, messages);
-                        _logger.LogInformation("Cached {Count} messages for chat {ChatId}",
-                            messages.Count, chatId);
-                    }
-
-                    return messages;
-                }
-                else
-                {
-                    _logger.LogWarning("No messages found for chat {ChatId}", chatId);
-                    return new List<MessageModel>();
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to load messages for chat {ChatId}", chatId);
-                return new List<MessageModel>();
-            }
-        }
-
-        public async Task<MessageModel?> SendMessageAsync(Guid chatId, string content)
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(content))
-                {
-                    _logger.LogWarning("Attempted to send empty message to chat {ChatId}", chatId);
-                    await _toastService.ShowToastAsync("Cannot send empty message", ToastType.Warning);
-                    return null;
-                }
-
-                _logger.LogInformation("Sending message to chat {ChatId}", chatId);
-
-                // Create DTO for API call
-                var dto = new SendMessageDto
-                {
-                    ChatId = chatId,
-                    Content = content
-                };
-
-                // First send via SignalR for real-time delivery if connected
-                await _signalRService.SendMessageAsync(chatId, content);
-
-                // Then make the API call to ensure persistence
-                var response = await _apiService.PostAsync<MessageModel>(Constants.Endpoints.SendMessage, dto);
-
-                if (response != null)
-                {
-                    _logger.LogInformation("Message sent successfully to chat {ChatId}, server ID: {MessageId}",
-                        chatId, response.Id);
-
-                    // Get current user ID for message ownership
-                    var currentUserId = await GetCurrentUserIdAsync();
-
-                    // Populate extra properties for UI
-                    response.Status = Constants.MessageStatus.Sent;
-                    response.SentAtFormatted = FormatMessageTime(response.SentAt);
-
-                    return response;
-                }
-                else
-                {
-                    _logger.LogWarning("Failed to send message to chat {ChatId}", chatId);
-                    await _toastService.ShowToastAsync("Message could not be sent", ToastType.Warning);
-                    return null;
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error sending message to chat {ChatId}", chatId);
-                await _toastService.ShowToastAsync("Failed to send message: " + ex.Message, ToastType.Error);
-                return null;
-            }
-        }
-
-        public async Task MarkAsReadAsync(Guid chatId, List<int> messageIds)
-        {
-            if (messageIds == null || messageIds.Count == 0)
-            {
-                _logger.LogInformation("No messages to mark as read for chat {ChatId}", chatId);
-                return;
-            }
-
-            try
-            {
-                _logger.LogInformation("Marking {Count} messages as read in chat {ChatId}",
-                    messageIds.Count, chatId);
-
-                var endpoint = $"{Constants.Endpoints.MarkRead}/{chatId}/mark-read";
-                await _apiService.PostAsync<object>(endpoint, messageIds);
-
-                // Also mark via SignalR for real-time updates to other clients
-                await _signalRService.MarkMessagesAsReadAsync(messageIds);
-
-                _logger.LogInformation("Successfully marked messages as read in chat {ChatId}", chatId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to mark messages as read in chat {ChatId}", chatId);
-                // Don't show toast here as this is a background operation
-            }
-        }
-
-        #region Helper Methods
-
-        private string FormatMessageTime(DateTime dateTime)
-        {
-            try
-            {
-                // Always use local time for display - convert from UTC
-                var localDateTime = TimeZoneInfo.ConvertTimeFromUtc(dateTime, TimeZoneInfo.Local);
-                var now = DateTime.Now;
-
-                // Today, show only time in 24-hour format
-                if (localDateTime.Date == now.Date)
-                {
-                    return localDateTime.ToString("HH:mm");
-                }
-                // Yesterday
-                else if (localDateTime.Date == now.Date.AddDays(-1))
-                {
-                    return "Yesterday " + localDateTime.ToString("HH:mm");
-                }
-                // Within the last week
-                else if ((now.Date - localDateTime.Date).TotalDays < 7)
-                {
-                    return localDateTime.ToString("ddd HH:mm"); // Day of week + time
-                }
-                // Older messages
-                else
-                {
-                    return localDateTime.ToString("yyyy-MM-dd HH:mm");
-                }
-            }
-            catch (Exception)
-            {
-                // Fallback to simple time format if any error occurs
-                return dateTime.ToString("HH:mm");
-            }
-        }
-
-        #endregion
     }
 }
