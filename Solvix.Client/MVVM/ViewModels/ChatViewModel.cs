@@ -6,7 +6,6 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
-using Solvix.Client.Core.Services;
 
 namespace Solvix.Client.MVVM.ViewModels
 {
@@ -28,6 +27,10 @@ namespace Solvix.Client.MVVM.ViewModels
         private bool _isInitialized = false;
         private readonly Dictionary<int, int> _tempToServerMessageIds = new();
 
+        // Message tracking for deduplication
+        private readonly HashSet<string> _messageSignatures = new();
+        private readonly SemaphoreSlim _messageProcessingLock = new SemaphoreSlim(1, 1);
+
         public string ChatId
         {
             get => _chatId;
@@ -45,6 +48,25 @@ namespace Solvix.Client.MVVM.ViewModels
                         LoadChatAsync().ConfigureAwait(false);
                     }
                 }
+            }
+        }
+
+        private async Task<long> GetUserIdAsync()
+        {
+            try
+            {
+                // Try to get from field first
+                if (_currentUserId > 0)
+                    return _currentUserId;
+
+                // Try to get from chat service
+                _currentUserId = await _chatService.GetCurrentUserIdAsync();
+                return _currentUserId;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting current user ID");
+                return 0;
             }
         }
 
@@ -199,101 +221,95 @@ namespace Solvix.Client.MVVM.ViewModels
             _logger.LogInformation("ChatViewModel initialized");
         }
 
-        // Smoothly update the messages collection without replacing it completely
-        private void UpdateMessagesCollection(List<MessageModel> newMessages)
+        // Generate a unique signature for a message to aid in deduplication
+        private string GenerateMessageSignature(MessageModel message)
         {
+            return $"{message.SenderId}:{message.Content}:{message.SentAt.Ticks}";
+        }
+
+        // Smoothly update the messages collection without replacing it completely
+        private async Task UpdateMessagesCollection(List<MessageModel> newMessages)
+        {
+            if (newMessages == null || newMessages.Count == 0)
+            {
+                // Only clear if there are messages in the collection
+                if (Messages.Count > 0)
+                {
+                    await MainThread.InvokeOnMainThreadAsync(() => {
+                        Messages.Clear();
+                        _messageSignatures.Clear();
+                        NoMessages = true;
+                    });
+                }
+                return;
+            }
+
+            await _messageProcessingLock.WaitAsync();
+
             try
             {
-                if (newMessages == null || newMessages.Count == 0)
-                {
-                    // فقط در صورتی که پیامی در کالکشن موجود باشد، آن را پاک می‌کنیم
-                    if (Messages.Count > 0)
-                    {
-                        MainThread.BeginInvokeOnMainThread(() => {
-                            Messages.Clear();
-                            NoMessages = true;
-                        });
-                    }
-                    return;
-                }
-
-                // Set NoMessages based on new message count
+                // Update NoMessages based on new message count
                 NoMessages = newMessages.Count == 0;
 
-                // به جای جایگزینی کل کالکشن، فقط پیام‌های جدید را اضافه می‌کنیم
-                MainThread.BeginInvokeOnMainThread(() => {
-                    // تهیه لیست پیام‌هایی که در حال حاضر در کالکشن موجود نیستند
-                    var currentMessageIds = new HashSet<int>(Messages.Where(m => m.Id > 0).Select(m => m.Id));
-                    var messagesToAdd = newMessages.Where(m => m.Id > 0 && !currentMessageIds.Contains(m.Id)).ToList();
-
-                    if (messagesToAdd.Count > 0)
+                await MainThread.InvokeOnMainThreadAsync(() => {
+                    // Process each new message
+                    foreach (var newMessage in newMessages.OrderBy(m => m.SentAt))
                     {
-                        // مرتب‌سازی پیام‌های جدید بر اساس زمان ارسال
-                        messagesToAdd = messagesToAdd.OrderBy(m => m.SentAt).ToList();
-
-                        // Preserve temporary messages (negative IDs)
-                        var tempMessages = Messages.Where(m => m.Id < 0).ToList();
-
-                        // اضافه کردن پیام‌های جدید به کالکشن موجود
-                        foreach (var msg in messagesToAdd)
+                        // Check if this message is already in our collection
+                        var signature = GenerateMessageSignature(newMessage);
+                        if (_messageSignatures.Contains(signature))
                         {
-                            // We need to set IsOwnMessage again here
-                            msg.IsOwnMessage = msg.SenderId == _currentUserId;
+                            // Message already exists, just update properties
+                            var existingMessage = Messages.FirstOrDefault(m =>
+                                m.SenderId == newMessage.SenderId &&
+                                m.Content == newMessage.Content &&
+                                Math.Abs((m.SentAt - newMessage.SentAt).TotalSeconds) < 60);
 
-                            // Add to end of collection to avoid UI jumps
-                            Messages.Add(msg);
+                            if (existingMessage != null)
+                            {
+                                // Update status, read state, etc.
+                                existingMessage.Status = newMessage.Status;
+                                existingMessage.IsRead = newMessage.IsRead;
+                                existingMessage.ReadAt = newMessage.ReadAt;
+                            }
+                            continue;
                         }
 
-                        // Re-sort messages if needed
-                        var messagesList = Messages.OrderBy(m => m.SentAt).ToList();
+                        // Ensure the message has correct IsOwnMessage property
+                        newMessage.IsOwnMessage = newMessage.SenderId == _currentUserId;
 
-                        // Only refresh collection if order has changed
-                        bool orderChanged = false;
-                        for (int i = 0; i < Messages.Count; i++)
-                        {
-                            if (i < messagesList.Count && Messages[i] != messagesList[i])
-                            {
-                                orderChanged = true;
-                                break;
-                            }
-                        }
+                        // Add the message and its signature
+                        Messages.Add(newMessage);
+                        _messageSignatures.Add(signature);
+                    }
 
-                        if (orderChanged)
+                    // Ensure messages are sorted by time
+                    var sortedMessages = Messages.OrderBy(m => m.SentAt).ToList();
+
+                    // Only replace if order has changed
+                    bool orderChanged = false;
+                    for (int i = 0; i < Messages.Count; i++)
+                    {
+                        if (i < sortedMessages.Count && !object.ReferenceEquals(Messages[i], sortedMessages[i]))
                         {
-                            var observableCopy = new ObservableCollection<MessageModel>(messagesList);
-                            Messages.Clear();
-                            foreach (var msg in observableCopy)
-                            {
-                                Messages.Add(msg);
-                            }
+                            orderChanged = true;
+                            break;
                         }
                     }
 
-                    // بروزرسانی پیام‌های موجود (مثلاً وضعیت خوانده شدن)
-                    foreach (var message in newMessages)
+                    if (orderChanged)
                     {
-                        var existingMessage = Messages.FirstOrDefault(m => m.Id == message.Id && m.Id > 0);
-                        if (existingMessage != null)
+                        Messages.Clear();
+                        foreach (var message in sortedMessages)
                         {
-                            // فقط اگر وضعیت تغییر کرده باشد، آن را به‌روز می‌کنیم
-                            if (existingMessage.Status != message.Status ||
-                                existingMessage.IsRead != message.IsRead ||
-                                existingMessage.ReadAt != message.ReadAt)
-                            {
-                                existingMessage.Status = message.Status;
-                                existingMessage.IsRead = message.IsRead;
-                                existingMessage.ReadAt = message.ReadAt;
-
-                                // Force UI update without collection replacement
-                                OnPropertyChanged(nameof(Messages));
-                            }
+                            Messages.Add(message);
                         }
                     }
                 });
             }
-            catch (Exception ex)
+            finally
             {
-                _logger.LogError(ex, "Error updating messages collection");
+                _messageProcessingLock.Release();
             }
         }
 
@@ -357,13 +373,13 @@ namespace Solvix.Client.MVVM.ViewModels
 
             try
             {
-                // نشان دادن وضعیت بارگذاری فقط اگر پیامی نمایش داده نشده است
+                // Only show loading if there are no messages
                 if (Messages.Count == 0)
                 {
                     await MainThread.InvokeOnMainThreadAsync(() => IsLoading = true);
                 }
 
-                // بارگذاری اطلاعات چت
+                // Load chat data
                 var chat = await _chatService.GetChatAsync(chatGuid);
                 if (chat == null)
                 {
@@ -376,17 +392,26 @@ namespace Solvix.Client.MVVM.ViewModels
                     return;
                 }
 
-                // بارگذاری پیام‌ها (با استفاده از کش در صورت وجود)
+                // Load messages (using cache if available)
                 var messages = await _chatService.GetMessagesAsync(chatGuid);
                 _logger.LogInformation("Loaded {Count} messages for chat {ChatId}",
                     messages?.Count ?? 0, chatGuid);
 
-                // تبدیل زمان‌های UTC به زمان محلی برای نمایش
+                // Ensure user ID is loaded
+                if (_currentUserId == 0)
+                {
+                    _currentUserId = await GetUserIdAsync();
+                }
+
+                // Format message times for display
                 if (messages != null && messages.Count > 0)
                 {
                     foreach (var message in messages)
                     {
-                        // تنظیم فرمت زمان برای نمایش
+                        // Make sure each message has its IsOwnMessage property set correctly
+                        message.IsOwnMessage = message.SenderId == _currentUserId;
+
+                        // Format time for display
                         if (string.IsNullOrEmpty(message.SentAtFormatted))
                         {
                             message.SentAtFormatted = FormatLocalTime(message.LocalSentAt);
@@ -394,18 +419,18 @@ namespace Solvix.Client.MVVM.ViewModels
                     }
                 }
 
-                // به‌روزرسانی UI در thread اصلی
+                // Update UI on main thread
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     try
                     {
-                        // تنظیم چت
+                        // Set chat
                         Chat = chat;
 
-                        // بروزرسانی کالکشن پیام‌ها اگر پیامی بارگذاری شده است
+                        // Update messages if any were loaded
                         if (messages != null && messages.Count > 0)
                         {
-                            UpdateMessagesCollection(messages);
+                            UpdateMessagesCollection(messages).ConfigureAwait(false);
                             NoMessages = false;
                             _logger.LogInformation("Added {Count} messages to UI", messages.Count);
                         }
@@ -415,10 +440,10 @@ namespace Solvix.Client.MVVM.ViewModels
                             _logger.LogWarning("No messages to display");
                         }
 
-                        // به روزرسانی وضعیت آنلاین
+                        // Fix online status
                         Task.Run(() => FixOnlineStatusAsync());
 
-                        // اتمام وضعیت بارگذاری
+                        // Done loading
                         IsLoading = false;
                     }
                     catch (Exception ex)
@@ -428,7 +453,7 @@ namespace Solvix.Client.MVVM.ViewModels
                     }
                 });
 
-                // علامت‌گذاری پیام‌های خوانده نشده به عنوان خوانده شده
+                // Mark unread messages as read
                 Task.Run(() => MarkUnreadMessagesAsReadAsync());
             }
             catch (Exception ex)
@@ -450,33 +475,42 @@ namespace Solvix.Client.MVVM.ViewModels
 
             try
             {
-                // Find unread messages that are not sent by the current user
-                var unreadMessageIds = Messages
-                    .Where(m => !m.IsOwnMessage && !m.IsRead)
-                    .Select(m => m.Id)
-                    .Where(id => id > 0) // Only include server-assigned IDs
-                    .ToList();
+                await _messageProcessingLock.WaitAsync();
 
-                if (unreadMessageIds.Count > 0)
+                try
                 {
-                    _logger.LogInformation("Marking {Count} messages as read", unreadMessageIds.Count);
+                    // Find unread messages that are not sent by the current user
+                    var unreadMessageIds = Messages
+                        .Where(m => !m.IsOwnMessage && !m.IsRead)
+                        .Select(m => m.Id)
+                        .Where(id => id > 0) // Only include server-assigned IDs
+                        .ToList();
 
-                    // Mark as read on server
-                    await _chatService.MarkAsReadAsync(chatGuid, unreadMessageIds);
-
-                    // Update local message status
-                    foreach (var messageId in unreadMessageIds)
+                    if (unreadMessageIds.Count > 0)
                     {
-                        var message = Messages.FirstOrDefault(m => m.Id == messageId);
-                        if (message != null)
-                        {
-                            message.IsRead = true;
-                            message.ReadAt = DateTime.UtcNow;
-                        }
-                    }
+                        _logger.LogInformation("Marking {Count} messages as read", unreadMessageIds.Count);
 
-                    // Update UI
-                    await MainThread.InvokeOnMainThreadAsync(() => OnPropertyChanged(nameof(Messages)));
+                        // Mark as read on server
+                        await _chatService.MarkAsReadAsync(chatGuid, unreadMessageIds);
+
+                        // Update local message status
+                        foreach (var messageId in unreadMessageIds)
+                        {
+                            var message = Messages.FirstOrDefault(m => m.Id == messageId);
+                            if (message != null)
+                            {
+                                message.IsRead = true;
+                                message.ReadAt = DateTime.UtcNow;
+                            }
+                        }
+
+                        // Update UI
+                        await MainThread.InvokeOnMainThreadAsync(() => OnPropertyChanged(nameof(Messages)));
+                    }
+                }
+                finally
+                {
+                    _messageProcessingLock.Release();
                 }
             }
             catch (Exception ex)
@@ -497,112 +531,126 @@ namespace Solvix.Client.MVVM.ViewModels
 
             try
             {
-                IsSending = true;
+                await _messageProcessingLock.WaitAsync();
 
-                _logger.LogInformation("Sending message to chat {ChatId}: {MessageText}", chatGuid, messageText);
-
-                // Create temporary message with a unique negative ID
-                var tempId = -DateTime.Now.Millisecond - 1000 * new Random().Next(1000, 9999);
-                var tempMessage = new MessageModel
-                {
-                    Id = tempId, // Ensure unique negative ID
-                    Content = messageText,
-                    SentAt = DateTime.Now, // Use local time for immediate display
-                    ChatId = chatGuid,
-                    SenderId = _currentUserId > 0 ? _currentUserId : await _chatService.GetCurrentUserIdAsync(),
-                    SenderName = "You", // Will be replaced by server response
-                    Status = Constants.MessageStatus.Sending,
-                    SentAtFormatted = DateTime.Now.ToString("HH:mm"), // Format immediately with local time
-                    IsOwnMessage = true // Explicitly set this to true for UI
-                };
-
-                // Cache the current user ID for future use
-                if (_currentUserId == 0)
-                {
-                    _currentUserId = tempMessage.SenderId;
-                }
-
-                // Add to local messages immediately
-                await MainThread.InvokeOnMainThreadAsync(() => {
-                    Messages.Add(tempMessage);
-                    NoMessages = false;
-
-                    // Also add to chat's messages collection if exists
-                    Chat?.Messages?.Add(tempMessage);
-                });
-
-                // Send the message through ChatService
-                MessageModel serverMessage = null;
                 try
                 {
-                    serverMessage = await _chatService.SendMessageAsync(chatGuid, messageText);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error sending message to server");
-                }
+                    IsSending = true;
 
-                // Process the response on the UI thread
-                await MainThread.InvokeOnMainThreadAsync(() =>
-                {
-                    if (serverMessage != null)
+                    _logger.LogInformation("Sending message to chat {ChatId}: {MessageText}", chatGuid, messageText);
+
+                    // Get current user ID if not already set
+                    if (_currentUserId == 0)
                     {
-                        // Set the server message to match the temp message's isOwnMessage property
-                        serverMessage.IsOwnMessage = true;
+                        _currentUserId = await GetUserIdAsync();
+                    }
 
-                        // Keep track of the relationship between temp and server messages
-                        _tempToServerMessageIds[tempId] = serverMessage.Id;
+                    // Create temporary message with a unique negative ID
+                    var tempId = -DateTime.Now.Millisecond - 1000 * new Random().Next(1000, 9999);
+                    var tempMessage = new MessageModel
+                    {
+                        Id = tempId,
+                        Content = messageText,
+                        SentAt = DateTime.Now, // Use local time for immediate display
+                        ChatId = chatGuid,
+                        SenderId = _currentUserId,
+                        SenderName = "You", // Will be replaced by server response
+                        Status = Constants.MessageStatus.Sending,
+                        SentAtFormatted = DateTime.Now.ToString("HH:mm"),
+                        IsOwnMessage = true // Explicitly set for UI
+                    };
 
-                        // Find and replace the temporary message
-                        var tempMsg = Messages.FirstOrDefault(m => m.Id == tempId);
-                        if (tempMsg != null)
+                    // Generate signature for this message
+                    var signature = GenerateMessageSignature(tempMessage);
+                    _messageSignatures.Add(signature);
+
+                    // Add to local messages immediately
+                    await MainThread.InvokeOnMainThreadAsync(() => {
+                        Messages.Add(tempMessage);
+                        NoMessages = false;
+
+                        // Also add to chat's messages collection if exists
+                        Chat?.Messages?.Add(tempMessage);
+                    });
+
+                    // Send the message through ChatService
+                    MessageModel serverMessage = null;
+                    try
+                    {
+                        serverMessage = await _chatService.SendMessageAsync(chatGuid, messageText);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error sending message to server");
+                    }
+
+                    // Process the response on the UI thread
+                    await MainThread.InvokeOnMainThreadAsync(() =>
+                    {
+                        if (serverMessage != null)
                         {
-                            // Update the temp message with the server data
-                            var index = Messages.IndexOf(tempMsg);
-                            if (index >= 0)
-                            {
-                                Messages[index] = serverMessage;
-                            }
+                            // Set the server message to match the temp message's isOwnMessage property
+                            serverMessage.IsOwnMessage = true;
 
-                            // Also update in chat's messages collection if it exists
-                            if (Chat?.Messages != null)
+                            // Keep track of the relationship between temp and server messages
+                            _tempToServerMessageIds[tempId] = serverMessage.Id;
+
+                            // Add server message signature to avoid duplication when receiving via SignalR
+                            var serverSignature = GenerateMessageSignature(serverMessage);
+                            _messageSignatures.Add(serverSignature);
+
+                            // Find and replace the temporary message
+                            var tempMsg = Messages.FirstOrDefault(m => m.Id == tempId);
+                            if (tempMsg != null)
                             {
-                                var chatTempMsg = Chat.Messages.FirstOrDefault(m => m.Id == tempId);
-                                if (chatTempMsg != null)
+                                // Update the temp message with the server data
+                                var index = Messages.IndexOf(tempMsg);
+                                if (index >= 0)
                                 {
-                                    var chatIndex = Chat.Messages.IndexOf(chatTempMsg);
-                                    if (chatIndex >= 0)
+                                    Messages[index] = serverMessage;
+                                }
+
+                                // Also update in chat's messages collection if it exists
+                                if (Chat?.Messages != null)
+                                {
+                                    var chatTempMsg = Chat.Messages.FirstOrDefault(m => m.Id == tempId);
+                                    if (chatTempMsg != null)
                                     {
-                                        Chat.Messages[chatIndex] = serverMessage;
+                                        var chatIndex = Chat.Messages.IndexOf(chatTempMsg);
+                                        if (chatIndex >= 0)
+                                        {
+                                            Chat.Messages[chatIndex] = serverMessage;
+                                        }
                                     }
                                 }
                             }
+
+                            _logger.LogInformation("Message sent successfully, server ID: {MessageId}", serverMessage.Id);
                         }
-
-                        _logger.LogInformation("Message sent successfully, server ID: {MessageId}", serverMessage.Id);
-
-                        // Invalidate cache since we have a new message
-                        MessageCache.InvalidateCache(chatGuid);
-                    }
-                    else
-                    {
-                        // Mark the temporary message as failed
-                        var tempMsg = Messages.FirstOrDefault(m => m.Id == tempId);
-                        if (tempMsg != null)
+                        else
                         {
-                            tempMsg.Status = Constants.MessageStatus.Failed;
+                            // Mark the temporary message as failed
+                            var tempMsg = Messages.FirstOrDefault(m => m.Id == tempId);
+                            if (tempMsg != null)
+                            {
+                                tempMsg.Status = Constants.MessageStatus.Failed;
 
-                            // Notify UI of the status change
-                            OnPropertyChanged(nameof(Messages));
+                                // Notify UI of the status change
+                                OnPropertyChanged(nameof(Messages));
+                            }
+
+                            _logger.LogWarning("Failed to send message");
+                            _toastService.ShowToastAsync("Failed to send message", ToastType.Error)
+                                .ConfigureAwait(false);
                         }
 
-                        _logger.LogWarning("Failed to send message");
-                        _toastService.ShowToastAsync("Failed to send message", ToastType.Error)
-                            .ConfigureAwait(false);
-                    }
-
-                    IsSending = false;
-                });
+                        IsSending = false;
+                    });
+                }
+                finally
+                {
+                    _messageProcessingLock.Release();
+                }
             }
             catch (Exception ex)
             {
@@ -617,7 +665,7 @@ namespace Solvix.Client.MVVM.ViewModels
         {
             try
             {
-                // اطمینان از استفاده از زمان محلی
+                // Ensure we use local time
                 DateTime localTime = dateTime.Kind == DateTimeKind.Utc
                     ? dateTime.ToLocalTime()
                     : dateTime;
@@ -626,6 +674,7 @@ namespace Solvix.Client.MVVM.ViewModels
             }
             catch
             {
+                // Fallback to simple format in case of error
                 return dateTime.ToString("HH:mm");
             }
         }
@@ -655,76 +704,94 @@ namespace Solvix.Client.MVVM.ViewModels
             if (Chat == null || message.ChatId.ToString() != ChatId)
                 return;
 
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
+            Task.Run(async () => {
+                await _messageProcessingLock.WaitAsync();
+
                 try
                 {
-                    _logger.LogInformation("Received message {MessageId} for chat {ChatId} from userId {SenderId}",
-                        message.Id, message.ChatId, message.SenderId);
-
-                    // Get our user ID to properly determine if message is our own
-                    var currentUserId = _currentUserId > 0 ? _currentUserId : GetUserIdSync();
-
-                    // Set IsOwnMessage based on the sender ID
-                    bool isOwnMessage = message.SenderId == currentUserId;
-                    message.IsOwnMessage = isOwnMessage;
-
-                    // Check if this message matches any of our temporary messages
-                    if (isOwnMessage)
+                    await MainThread.InvokeOnMainThreadAsync(() =>
                     {
-                        var tempMessage = Messages.FirstOrDefault(m =>
-                            m.Id < 0 && // Temp messages have negative IDs
-                            m.Content == message.Content &&
-                            Math.Abs((m.SentAt - message.SentAt).TotalSeconds) < 60); // Within 60 seconds
-
-                        if (tempMessage != null)
+                        try
                         {
-                            // Found a temporary message, remember this mapping
-                            _tempToServerMessageIds[tempMessage.Id] = message.Id;
+                            _logger.LogInformation("Received message {MessageId} for chat {ChatId} from userId {SenderId}",
+                                message.Id, message.ChatId, message.SenderId);
 
-                            // Just update the temporary message instead of replacing it
-                            // This prevents the UI from flickering
-                            tempMessage.Id = message.Id;
-                            tempMessage.Status = message.Status;
-                            tempMessage.SentAt = message.SentAt;
-                            tempMessage.SentAtFormatted = message.SentAtFormatted;
+                            // Get our user ID to properly determine if message is our own
+                            var currentUserId = _currentUserId > 0 ? _currentUserId : GetUserIdSync();
 
-                            // Force UI update
-                            OnPropertyChanged(nameof(Messages));
+                            // Set IsOwnMessage based on the sender ID
+                            bool isOwnMessage = message.SenderId == currentUserId;
+                            message.IsOwnMessage = isOwnMessage;
 
-                            return; // Handled the temp->server message, no need to proceed
-                        }
-                    }
+                            // Generate message signature for deduplication
+                            var signature = GenerateMessageSignature(message);
 
-                    // Check if this message already exists in our collection by ID
-                    var existingMessage = Messages.FirstOrDefault(m => m.Id == message.Id);
-                    if (existingMessage != null)
-                    {
-                        // Just update relevant properties instead of replacing the whole message object
-                        existingMessage.Status = message.Status;
-                        existingMessage.IsRead = message.IsRead;
-                        existingMessage.ReadAt = message.ReadAt;
+                            // Check if this is a duplicate
+                            if (_messageSignatures.Contains(signature))
+                            {
+                                _logger.LogDebug("Ignoring duplicate message: {Signature}", signature);
 
-                        // Force UI update
-                        OnPropertyChanged(nameof(Messages));
-                    }
-                    else
-                    {
-                        // It's a genuinely new message from someone else (or our own from another device)
-                        // Check for exact duplicates
-                        bool isDuplicate = Messages.Any(m =>
-                            m.Content == message.Content &&
-                            Math.Abs((m.SentAt - message.SentAt).TotalSeconds) < 60 &&
-                            m.SenderId == message.SenderId);
+                                // Just update status for existing message
+                                var existingMessage = Messages.FirstOrDefault(m =>
+                                    m.SenderId == message.SenderId &&
+                                    m.Content == message.Content &&
+                                    Math.Abs((m.SentAt - message.SentAt).TotalSeconds) < 60);
 
-                        if (!isDuplicate)
-                        {
-                            // Truly new message, add it
+                                if (existingMessage != null)
+                                {
+                                    // Update status, read state, etc.
+                                    existingMessage.Status = message.Status;
+                                    existingMessage.IsRead = message.IsRead;
+                                    existingMessage.ReadAt = message.ReadAt;
+
+                                    // Force UI update
+                                    OnPropertyChanged(nameof(Messages));
+                                }
+
+                                return;
+                            }
+
+                            // This is a new message we haven't seen before
+                            _messageSignatures.Add(signature);
+
+                            // If this is an own message, it might match a temporary message
+                            if (isOwnMessage)
+                            {
+                                var tempMessage = Messages.FirstOrDefault(m =>
+                                    m.Id < 0 && // Temp messages have negative IDs
+                                    m.Content == message.Content &&
+                                    Math.Abs((m.SentAt - message.SentAt).TotalSeconds) < 60); // Within 60 seconds
+
+                                if (tempMessage != null)
+                                {
+                                    // Found a temporary message, replace it with server data
+                                    _tempToServerMessageIds[tempMessage.Id] = message.Id;
+
+                                    tempMessage.Id = message.Id;
+                                    tempMessage.Status = message.Status;
+                                    tempMessage.SentAt = message.SentAt;
+                                    tempMessage.SentAtFormatted = message.SentAtFormatted;
+
+                                    // Force UI update
+                                    OnPropertyChanged(nameof(Messages));
+                                    return; // Handled the temp->server message, no need to add
+                                }
+                            }
+
+                            // Genuinely new message
                             Messages.Add(message);
                             NoMessages = false;
 
-                            // Also add to chat's messages
+                            // Also add to chat's messages collection
                             Chat?.Messages?.Add(message);
+
+                            // Sort messages by time
+                            var sortedMessages = Messages.OrderBy(m => m.SentAt).ToList();
+                            Messages.Clear();
+                            foreach (var msg in sortedMessages)
+                            {
+                                Messages.Add(msg);
+                            }
 
                             // Mark as read immediately if it's not our own
                             if (!isOwnMessage)
@@ -734,11 +801,15 @@ namespace Solvix.Client.MVVM.ViewModels
                                 MarkMessageAsReadAsync(message.Id).ConfigureAwait(false);
                             }
                         }
-                    }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Error handling received message");
+                        }
+                    });
                 }
-                catch (Exception ex)
+                finally
                 {
-                    _logger.LogError(ex, "Error handling received message");
+                    _messageProcessingLock.Release();
                 }
             });
         }
@@ -763,28 +834,39 @@ namespace Solvix.Client.MVVM.ViewModels
             if (Chat == null || chatId.ToString() != ChatId)
                 return;
 
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
+            Task.Run(async () => {
+                await _messageProcessingLock.WaitAsync();
+
                 try
                 {
-                    _logger.LogInformation("Message {MessageId} in chat {ChatId} marked as read",
-                        messageId, chatId);
-
-                    var message = Messages.FirstOrDefault(m => m.Id == messageId);
-                    if (message != null)
+                    await MainThread.InvokeOnMainThreadAsync(() =>
                     {
-                        // به‌روزرسانی وضعیت بدون جایگزینی کامل شیء
-                        message.IsRead = true;
-                        message.ReadAt = DateTime.UtcNow;
-                        message.Status = Constants.MessageStatus.Read;
+                        try
+                        {
+                            _logger.LogInformation("Message {MessageId} in chat {ChatId} marked as read",
+                                messageId, chatId);
 
-                        // اعلام تغییر برای به‌روزرسانی UI
-                        OnPropertyChanged(nameof(Messages));
-                    }
+                            var message = Messages.FirstOrDefault(m => m.Id == messageId);
+                            if (message != null)
+                            {
+                                // Update status without replacing the entire object
+                                message.IsRead = true;
+                                message.ReadAt = DateTime.UtcNow;
+                                message.Status = Constants.MessageStatus.Read;
+
+                                // Notify UI of change
+                                OnPropertyChanged(nameof(Messages));
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Error handling message read status update");
+                        }
+                    });
                 }
-                catch (Exception ex)
+                finally
                 {
-                    _logger.LogError(ex, "Error handling message read status update");
+                    _messageProcessingLock.Release();
                 }
             });
         }
@@ -793,7 +875,7 @@ namespace Solvix.Client.MVVM.ViewModels
         {
             if (Chat?.OtherParticipant?.Id == userId)
             {
-                MainThread.BeginInvokeOnMainThread(() =>
+                MainThread.BeginInvokeOnMainThreadAsync(() =>
                 {
                     try
                     {

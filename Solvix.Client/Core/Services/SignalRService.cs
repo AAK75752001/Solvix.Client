@@ -18,7 +18,11 @@ namespace Solvix.Client.Core.Services
         private int _retryAttempts = 0;
         private const int MaxRetryAttempts = 3;
         private bool _isInitialized = false;
-        private bool _showConnectionErrors = false;
+        private bool _showConnectionErrors = true;
+
+        // Track processed message IDs to prevent duplicates
+        private readonly HashSet<string> _processedMessageKeys = new HashSet<string>();
+        private readonly SemaphoreSlim _messageProcessingLock = new SemaphoreSlim(1, 1);
 
         public event Action<MessageModel> OnMessageReceived;
         public event Action<Guid, int> OnMessageRead;
@@ -125,24 +129,47 @@ namespace Solvix.Client.Core.Services
             {
                 // Set up event handlers
                 _hubConnection.On<int, long, string, string, Guid, DateTime>("ReceiveMessage",
-                    (messageId, senderId, senderName, content, chatId, sentAt) =>
+                    async (messageId, senderId, senderName, content, chatId, sentAt) =>
                     {
-                        _logger.LogInformation("Received message {MessageId} from {SenderName} in chat {ChatId}",
-                            messageId, senderName, chatId);
+                        await _messageProcessingLock.WaitAsync();
 
-                        var message = new MessageModel
+                        try
                         {
-                            Id = messageId,
-                            Content = content,
-                            SentAt = sentAt,
-                            SenderId = senderId,
-                            SenderName = senderName,
-                            ChatId = chatId,
-                            IsRead = false,
-                            Status = Constants.MessageStatus.Delivered
-                        };
+                            // Create a unique key for this message
+                            string messageKey = $"{messageId}:{chatId}:{senderId}:{content}";
 
-                        OnMessageReceived?.Invoke(message);
+                            // Check if we've already processed this message
+                            if (_processedMessageKeys.Contains(messageKey))
+                            {
+                                _logger.LogDebug("Skipping duplicate message {MessageId} from {SenderName} in chat {ChatId}",
+                                    messageId, senderName, chatId);
+                                return;
+                            }
+
+                            // Add to processed messages to avoid duplicates
+                            _processedMessageKeys.Add(messageKey);
+
+                            _logger.LogInformation("Received message {MessageId} from {SenderName} in chat {ChatId}",
+                                messageId, senderName, chatId);
+
+                            var message = new MessageModel
+                            {
+                                Id = messageId,
+                                Content = content,
+                                SentAt = sentAt,
+                                SenderId = senderId,
+                                SenderName = senderName,
+                                ChatId = chatId,
+                                IsRead = false,
+                                Status = Constants.MessageStatus.Delivered
+                            };
+
+                            OnMessageReceived?.Invoke(message);
+                        }
+                        finally
+                        {
+                            _messageProcessingLock.Release();
+                        }
                     });
 
                 _hubConnection.On<Guid, int>("MessageRead", (chatId, messageId) =>
@@ -186,7 +213,7 @@ namespace Solvix.Client.Core.Services
                     _isConnected = true;
                     _logger.LogInformation("SignalR reconnected with ID: {ConnectionId}", connectionId);
                     _retryAttempts = 0; // Reset retry counter on successful reconnection
-                    _showConnectionErrors = false; // Reset error display flag
+                    _showConnectionErrors = true; // Reset error display flag
                     return Task.CompletedTask;
                 };
 
@@ -262,7 +289,6 @@ namespace Solvix.Client.Core.Services
 
                     _isConnected = true;
                     _retryAttempts = 0; // Reset retry counter on successful connection
-                    _showConnectionErrors = false; // Reset error display flag
                     _logger.LogInformation("Successfully connected to SignalR");
                 }
                 catch (OperationCanceledException)
@@ -353,6 +379,17 @@ namespace Solvix.Client.Core.Services
             finally
             {
                 _connectionLock.Release();
+
+                // Clear message tracking when disconnecting
+                await _messageProcessingLock.WaitAsync();
+                try
+                {
+                    _processedMessageKeys.Clear();
+                }
+                finally
+                {
+                    _messageProcessingLock.Release();
+                }
             }
         }
 
@@ -366,7 +403,7 @@ namespace Solvix.Client.Core.Services
 
             try
             {
-                // Only attempt to send via SignalR if connected - otherwise just let the ChatService handle it via API
+                // Only attempt to send via SignalR if connected
                 if (_hubConnection.State != HubConnectionState.Connected)
                 {
                     _logger.LogInformation("Not connected to SignalR, message will be sent via API only");
@@ -453,6 +490,21 @@ namespace Solvix.Client.Core.Services
         public void SetShowConnectionErrors(bool show)
         {
             _showConnectionErrors = show;
+        }
+
+        // Clear the message tracking when changing chats
+        public async Task ClearMessageTrackingAsync()
+        {
+            await _messageProcessingLock.WaitAsync();
+            try
+            {
+                _processedMessageKeys.Clear();
+                _logger.LogInformation("Cleared message tracking cache");
+            }
+            finally
+            {
+                _messageProcessingLock.Release();
+            }
         }
     }
 }

@@ -15,6 +15,10 @@ namespace Solvix.Client.Core.Services
         private readonly ILogger<ChatService> _logger;
         private readonly SemaphoreSlim _sendMessageLock = new SemaphoreSlim(1, 1);
 
+        // Track sent messages to prevent duplicates
+        private readonly Dictionary<string, DateTime> _sentMessages = new Dictionary<string, DateTime>();
+        private readonly SemaphoreSlim _sentMessagesLock = new SemaphoreSlim(1, 1);
+
         public ChatService(
             IApiService apiService,
             IToastService toastService,
@@ -27,6 +31,44 @@ namespace Solvix.Client.Core.Services
             _signalRService = signalRService;
             _authService = authService;
             _logger = logger;
+
+            // Periodically clean up old sent message records
+            Task.Run(async () =>
+            {
+                while (true)
+                {
+                    await Task.Delay(TimeSpan.FromMinutes(5));
+                    await CleanupSentMessagesAsync();
+                }
+            });
+        }
+
+        private async Task CleanupSentMessagesAsync()
+        {
+            await _sentMessagesLock.WaitAsync();
+            try
+            {
+                var now = DateTime.UtcNow;
+                var keysToRemove = _sentMessages
+                    .Where(kvp => (now - kvp.Value).TotalMinutes > 30)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+
+                foreach (var key in keysToRemove)
+                {
+                    _sentMessages.Remove(key);
+                }
+
+                _logger.LogInformation("Cleaned up {Count} old sent message records", keysToRemove.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error cleaning up sent messages cache");
+            }
+            finally
+            {
+                _sentMessagesLock.Release();
+            }
         }
 
         public async Task<List<MessageModel>> GetMessagesAsync(Guid chatId, int skip = 0, int take = 50)
@@ -127,10 +169,44 @@ namespace Solvix.Client.Core.Services
                     return null;
                 }
 
+                // Check if we've sent this exact message in the last minute
+                string messageKey = $"{chatId}:{content.GetHashCode()}";
+                bool isDuplicate = false;
+
+                await _sentMessagesLock.WaitAsync();
+                try
+                {
+                    if (_sentMessages.TryGetValue(messageKey, out var sentTime))
+                    {
+                        // If sent less than 60 seconds ago, treat as duplicate
+                        if ((DateTime.UtcNow - sentTime).TotalSeconds < 60)
+                        {
+                            isDuplicate = true;
+                            _logger.LogWarning("Detected duplicate message to chat {ChatId} within 60 seconds", chatId);
+                        }
+                    }
+
+                    if (!isDuplicate)
+                    {
+                        // Record this message as sent
+                        _sentMessages[messageKey] = DateTime.UtcNow;
+                    }
+                }
+                finally
+                {
+                    _sentMessagesLock.Release();
+                }
+
+                if (isDuplicate)
+                {
+                    await _toastService.ShowToastAsync("Message already sent", ToastType.Info);
+                    return null;
+                }
+
                 _logger.LogInformation("Sending message to chat {ChatId}", chatId);
 
-                // Coordinated approach: First send via SignalR for real-time delivery
-                Task signalRTask = _signalRService.SendMessageAsync(chatId, content);
+                // Tell SignalR to clear message tracking when sending new messages
+                await _signalRService.ClearMessageTrackingAsync();
 
                 // Create DTO for API call
                 var dto = new SendMessageDto
@@ -139,19 +215,15 @@ namespace Solvix.Client.Core.Services
                     Content = content
                 };
 
-                // Make the API call to ensure persistence (this is the primary source of truth)
+                // Send via API for persistence
                 var response = await _apiService.PostAsync<MessageModel>(Constants.Endpoints.SendMessage, dto);
 
-                // Wait for the SignalR task to complete, but don't require success
-                try
-                {
-                    await signalRTask;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(ex, "SignalR message send failed, but API call succeeded");
-                    // This is not critical since we got a response from the API
-                }
+                // Wait a moment before sending via SignalR to ensure server persistence
+                // This avoids race conditions with SignalR delivery
+                await Task.Delay(100);
+
+                // Send via SignalR for real-time delivery 
+                Task signalRTask = _signalRService.SendMessageAsync(chatId, content);
 
                 if (response != null)
                 {
@@ -227,7 +299,7 @@ namespace Solvix.Client.Core.Services
         {
             try
             {
-                // ساعت UTC دریافتی از سرور را به ساعت محلی تبدیل می‌کنیم
+                // Convert UTC server time to local time
                 var localDateTime = dateTime.ToLocalTime();
                 var now = DateTime.Now;
 
@@ -254,7 +326,7 @@ namespace Solvix.Client.Core.Services
             }
             catch (Exception ex)
             {
-                // در صورت بروز خطا، ساعت را مستقیماً نمایش می‌دهیم
+                // If there's an error, just display the time
                 try
                 {
                     return dateTime.ToLocalTime().ToString("HH:mm");
@@ -353,6 +425,9 @@ namespace Solvix.Client.Core.Services
 
                     // Initialize computed properties
                     chat.InitializeComputedProperties();
+
+                    // Tell SignalR to clear its message tracking when changing chats
+                    await _signalRService.ClearMessageTrackingAsync();
 
                     _logger.LogInformation("Successfully retrieved chat {ChatId}", chatId);
                     return chat;

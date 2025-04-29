@@ -4,43 +4,109 @@ namespace Solvix.Client.Core.Models
 {
     public class MessageModel
     {
-        public int Id { get; set; }
-        public string Content { get; set; } = string.Empty;
-        public DateTime SentAt { get; set; }
-        public long SenderId { get; set; }
-        public string SenderName { get; set; } = string.Empty;
-        public Guid ChatId { get; set; }
-        public bool IsRead { get; set; }
-        public DateTime? ReadAt { get; set; }
-        public bool IsEdited { get; set; }
-        public DateTime? EditedAt { get; set; }
+        private int _id;
+        private string _content = string.Empty;
+        private DateTime _sentAt;
+        private long _senderId;
+        private string _senderName = string.Empty;
+        private Guid _chatId;
+        private bool _isRead;
+        private DateTime? _readAt;
+        private bool _isEdited;
+        private DateTime? _editedAt;
         private bool? _isOwnMessage;
+        private int _status = Constants.MessageStatus.Sending;
+        private string _sentAtFormatted = string.Empty;
+
+        public int Id
+        {
+            get => _id;
+            set => _id = value;
+        }
+
+        public string Content
+        {
+            get => _content;
+            set => _content = value ?? string.Empty;
+        }
+
+        public DateTime SentAt
+        {
+            get => _sentAt;
+            set => _sentAt = value;
+        }
+
+        public long SenderId
+        {
+            get => _senderId;
+            set => _senderId = value;
+        }
+
+        public string SenderName
+        {
+            get => _senderName;
+            set => _senderName = value ?? string.Empty;
+        }
+
+        public Guid ChatId
+        {
+            get => _chatId;
+            set => _chatId = value;
+        }
+
+        public bool IsRead
+        {
+            get => _isRead;
+            set => _isRead = value;
+        }
+
+        public DateTime? ReadAt
+        {
+            get => _readAt;
+            set => _readAt = value;
+        }
+
+        public bool IsEdited
+        {
+            get => _isEdited;
+            set => _isEdited = value;
+        }
+
+        public DateTime? EditedAt
+        {
+            get => _editedAt;
+            set => _editedAt = value;
+        }
 
         // Local properties for UI
         [JsonIgnore]
         public DateTime LocalSentAt => SentAt.ToLocalTime();
 
         [JsonIgnore]
-        public int Status { get; set; } = Constants.MessageStatus.Sending;
+        public int Status
+        {
+            get => _status;
+            set => _status = value;
+        }
 
         [JsonIgnore]
-        public string SentAtFormatted { get; set; } = string.Empty;
+        public string SentAtFormatted
+        {
+            get => string.IsNullOrEmpty(_sentAtFormatted) ? FormatTimeText() : _sentAtFormatted;
+            set => _sentAtFormatted = value;
+        }
 
         [JsonIgnore]
         public bool IsSent => Status >= Constants.MessageStatus.Sent;
 
-
         [JsonIgnore]
         public bool IsDelivered => Status >= Constants.MessageStatus.Delivered;
-
 
         [JsonIgnore]
         public bool IsReadByReceiver => Status >= Constants.MessageStatus.Read;
 
-
         [JsonIgnore]
         public bool IsFailed => Status == Constants.MessageStatus.Failed;
-
 
         [JsonIgnore]
         public bool IsOwnMessage
@@ -98,20 +164,24 @@ namespace Solvix.Client.Core.Models
                 if (!string.IsNullOrEmpty(SentAtFormatted))
                     return SentAtFormatted;
 
-                try
-                {
-                    // زمان سرور را به زمان محلی تبدیل می‌کنیم
-                    var localTime = LocalSentAt;
-                    return localTime.ToString("HH:mm");
-                }
-                catch
-                {
-                    // در صورت خطا از فرمت ساده استفاده می‌کنیم
-                    return SentAt.ToString("HH:mm");
-                }
+                return FormatTimeText();
             }
         }
 
+        private string FormatTimeText()
+        {
+            try
+            {
+                // Convert server time to local time
+                var localTime = LocalSentAt;
+                return localTime.ToString("HH:mm");
+            }
+            catch
+            {
+                // In case of error, use simple format
+                return SentAt.ToString("HH:mm");
+            }
+        }
 
         [JsonIgnore]
         public string StatusIcon
@@ -125,7 +195,7 @@ namespace Solvix.Client.Core.Models
                     return "✓✓"; // Unicode double check mark for read
 
                 if (IsDelivered)
-                    return "✓"; // Unicode check mark for delivered
+                    return "✓✓"; // Unicode double check mark for delivered
 
                 if (IsSent)
                     return "✓"; // Unicode check mark for sent
@@ -134,6 +204,35 @@ namespace Solvix.Client.Core.Models
             }
         }
 
+        // Generate a unique signature for message deduplication
+        [JsonIgnore]
+        public string Signature => $"{SenderId}:{Content.GetHashCode()}:{SentAt.Ticks}";
+
+        // Override Equals and GetHashCode for better comparison
+        public override bool Equals(object obj)
+        {
+            if (obj is MessageModel other)
+            {
+                // Consider messages equal if they have the same ID (if ID > 0)
+                // or if they have the same signature for temporary messages
+                if (Id > 0 && other.Id > 0)
+                    return Id == other.Id;
+
+                return SenderId == other.SenderId &&
+                       Content == other.Content &&
+                       Math.Abs((SentAt - other.SentAt).TotalSeconds) < 60;
+            }
+            return false;
+        }
+
+        public override int GetHashCode()
+        {
+            // Use ID for permanent messages, signature for temporary ones
+            if (Id > 0)
+                return Id.GetHashCode();
+
+            return Signature.GetHashCode();
+        }
     }
 
     public class SendMessageDto

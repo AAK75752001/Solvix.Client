@@ -77,13 +77,8 @@ namespace Solvix.Client
             services.AddSingleton<ISignalRService, SignalRService>();
 
             // Domain services
-            services.AddSingleton<ChatService>();
+            services.AddSingleton<IChatService, ChatService>();
             services.AddSingleton<IUserService, UserService>();
-
-
-            // Register diagnostic chat service as the implementation of IChatService
-            services.AddSingleton<IChatService, DiagnosticChatService>();
-
         }
 
         private static void RegisterViewModels(IServiceCollection services)
