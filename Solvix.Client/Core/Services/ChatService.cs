@@ -169,7 +169,7 @@ namespace Solvix.Client.Core.Services
                     return null;
                 }
 
-                // Check if we've sent this exact message in the last minute
+                // Check for duplicates in a thread-safe way
                 string messageKey = $"{chatId}:{content.GetHashCode()}";
                 bool isDuplicate = false;
 
@@ -178,11 +178,11 @@ namespace Solvix.Client.Core.Services
                 {
                     if (_sentMessages.TryGetValue(messageKey, out var sentTime))
                     {
-                        // If sent less than 60 seconds ago, treat as duplicate
-                        if ((DateTime.UtcNow - sentTime).TotalSeconds < 60)
+                        // If sent less than 30 seconds ago, treat as duplicate
+                        if ((DateTime.UtcNow - sentTime).TotalSeconds < 30)
                         {
                             isDuplicate = true;
-                            _logger.LogWarning("Detected duplicate message to chat {ChatId} within 60 seconds", chatId);
+                            _logger.LogWarning("Detected duplicate message to chat {ChatId} within 30 seconds", chatId);
                         }
                     }
 
@@ -205,9 +205,6 @@ namespace Solvix.Client.Core.Services
 
                 _logger.LogInformation("Sending message to chat {ChatId}", chatId);
 
-                // Tell SignalR to clear message tracking when sending new messages
-                await _signalRService.ClearMessageTrackingAsync();
-
                 // Create DTO for API call
                 var dto = new SendMessageDto
                 {
@@ -215,15 +212,8 @@ namespace Solvix.Client.Core.Services
                     Content = content
                 };
 
-                // Send via API for persistence
+                // Send via API first for persistence
                 var response = await _apiService.PostAsync<MessageModel>(Constants.Endpoints.SendMessage, dto);
-
-                // Wait a moment before sending via SignalR to ensure server persistence
-                // This avoids race conditions with SignalR delivery
-                await Task.Delay(100);
-
-                // Send via SignalR for real-time delivery 
-                Task signalRTask = _signalRService.SendMessageAsync(chatId, content);
 
                 if (response != null)
                 {
@@ -238,6 +228,21 @@ namespace Solvix.Client.Core.Services
                     response.SentAtFormatted = FormatMessageTime(response.SentAt);
                     response.IsOwnMessage = response.SenderId == currentUserId;
 
+                    // Clear message tracking in SignalR to ensure we detect the round-trip
+                    await _signalRService.ClearMessageTrackingAsync();
+
+                    // Also send via SignalR for real-time delivery (do this after API persistence)
+                    try
+                    {
+                        // Don't await here to improve perceived performance
+                        _ = _signalRService.SendMessageAsync(chatId, content);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Log the error but continue - message is already saved via API
+                        _logger.LogWarning(ex, "Failed to send message via SignalR to chat {ChatId}, but API save was successful", chatId);
+                    }
+
                     // Mark cache as invalid to ensure fresh data on next load
                     MessageCache.InvalidateCache(chatId);
 
@@ -245,9 +250,33 @@ namespace Solvix.Client.Core.Services
                 }
                 else
                 {
-                    _logger.LogWarning("Failed to send message to chat {ChatId}", chatId);
-                    await _toastService.ShowToastAsync("Message could not be sent", ToastType.Warning);
-                    return null;
+                    _logger.LogWarning("Failed to send message to chat {ChatId} via API", chatId);
+
+                    // Try SignalR as a fallback
+                    try
+                    {
+                        await _signalRService.SendMessageAsync(chatId, content);
+                        _logger.LogInformation("Message sent to chat {ChatId} via SignalR only", chatId);
+
+                        // Create a mock message with temporary ID
+                        return new MessageModel
+                        {
+                            Id = -DateTime.Now.Millisecond, // Temporary negative ID 
+                            Content = content,
+                            SentAt = DateTime.UtcNow,
+                            SenderId = await GetCurrentUserIdAsync(),
+                            SenderName = "You",
+                            ChatId = chatId,
+                            Status = Constants.MessageStatus.Sent,
+                            IsOwnMessage = true
+                        };
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to send message via both API and SignalR");
+                        await _toastService.ShowToastAsync("Message could not be sent", ToastType.Error);
+                        return null;
+                    }
                 }
             }
             catch (Exception ex)

@@ -45,11 +45,11 @@
         // Message Status
         public static class MessageStatus
         {
-            public const int Sending = 0;
-            public const int Sent = 1;
-            public const int Delivered = 2;
-            public const int Read = 3;
-            public const int Failed = 4;
+            public const int Sending = 0;    // در حال ارسال - نمایش آیکون ساعت
+            public const int Sent = 1;       // ارسال شده به سرور - نمایش یک تیک
+            public const int Delivered = 2;  // دریافت شده توسط گیرنده - نمایش یک تیک
+            public const int Read = 3;       // خوانده شده توسط گیرنده - نمایش دو تیک
+            public const int Failed = 4;     // خطا در ارسال - نمایش آیکون خطا
         }
 
         // Validation Regex

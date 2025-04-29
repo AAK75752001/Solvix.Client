@@ -12,9 +12,11 @@ namespace Solvix.Client.Core.Interfaces
         Task ClearMessageTrackingAsync();
         void SetShowConnectionErrors(bool show);
 
+
         event Action<MessageModel> OnMessageReceived;
         event Action<Guid, int> OnMessageRead;
         event Action<string> OnError;
         event Action<long, bool, DateTime?> OnUserStatusChanged;
+        event Action<int> OnMessageConfirmed;
     }
 }

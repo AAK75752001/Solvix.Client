@@ -118,8 +118,10 @@ namespace Solvix.Client.Core.Models
 
                 try
                 {
+                    // Attempt to get from static storage first for performance
                     var currentUserIdTask = SecureStorage.GetAsync(Constants.StorageKeys.UserId);
 
+                    // Check if the task completed synchronously
                     if (currentUserIdTask.IsCompleted)
                     {
                         var currentUserId = currentUserIdTask.Result;
@@ -129,11 +131,11 @@ namespace Solvix.Client.Core.Models
                         return _isOwnMessage.Value;
                     }
 
-                    // If the task is not completed yet, we have a small timeout
-                    var timeoutTask = Task.Delay(300); // 300ms timeout
-                    Task.WhenAny(currentUserIdTask, timeoutTask).Wait(); // Use Wait here to be synchronous
+                    // Use a non-blocking approach with a short timeout
+                    var timeoutTask = Task.Delay(100); // Very short timeout to prevent UI delays
 
-                    if (currentUserIdTask.IsCompleted)
+                    // Use WhenAny to avoid blocking the thread
+                    if (Task.WhenAny(currentUserIdTask, timeoutTask).Result == currentUserIdTask)
                     {
                         var currentUserId = currentUserIdTask.Result;
                         _isOwnMessage = !string.IsNullOrEmpty(currentUserId) &&
@@ -142,14 +144,13 @@ namespace Solvix.Client.Core.Models
                         return _isOwnMessage.Value;
                     }
 
-                    // Default to false if we can't determine
-                    _isOwnMessage = false;
+                    // If we couldn't get the user ID quickly, default to false
+                    // The UI will update later when the correct value is determined
                     return false;
                 }
                 catch
                 {
                     // In case of any error, default to false
-                    _isOwnMessage = false;
                     return false;
                 }
             }
@@ -189,18 +190,18 @@ namespace Solvix.Client.Core.Models
             get
             {
                 if (IsFailed)
-                    return "❌"; // Unicode error symbol
+                    return "❌"; // Unicode error symbol (خطا در ارسال)
 
                 if (IsReadByReceiver)
-                    return "✓✓"; // Unicode double check mark for read
+                    return "✓✓"; // Unicode double check mark for read (خوانده شده)
 
                 if (IsDelivered)
-                    return "✓✓"; // Unicode double check mark for delivered
+                    return "✓"; // Unicode single check mark for delivered (تحویل داده شده)
 
                 if (IsSent)
-                    return "✓"; // Unicode check mark for sent
+                    return "✓"; // Unicode single check mark for sent (ارسال شده)
 
-                return "⏱"; // Unicode watch symbol for sending
+                return "⏱"; // Unicode watch symbol for sending (در حال ارسال)
             }
         }
 

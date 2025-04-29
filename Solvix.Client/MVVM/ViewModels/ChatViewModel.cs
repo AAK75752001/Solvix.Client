@@ -198,10 +198,10 @@ namespace Solvix.Client.MVVM.ViewModels
         public ICommand RefreshCommand { get; }
 
         public ChatViewModel(
-            IChatService chatService,
-            ISignalRService signalRService,
-            IToastService toastService,
-            ILogger<ChatViewModel> logger)
+    IChatService chatService,
+    ISignalRService signalRService,
+    IToastService toastService,
+    ILogger<ChatViewModel> logger)
         {
             _chatService = chatService;
             _signalRService = signalRService;
@@ -213,10 +213,11 @@ namespace Solvix.Client.MVVM.ViewModels
             ViewProfileCommand = new Command(async () => await ViewProfileAsync());
             RefreshCommand = new Command(async () => await LoadChatAsync());
 
-            // Subscribe to SignalR events
+            // اشتراک در رویدادهای SignalR
             _signalRService.OnMessageReceived += OnMessageReceived;
             _signalRService.OnMessageRead += OnMessageRead;
             _signalRService.OnUserStatusChanged += OnUserStatusChanged;
+            _signalRService.OnMessageConfirmed += OnMessageConfirmed; // رویداد جدید
 
             _logger.LogInformation("ChatViewModel initialized");
         }
@@ -228,16 +229,17 @@ namespace Solvix.Client.MVVM.ViewModels
         }
 
         // Smoothly update the messages collection without replacing it completely
+        // جایگزینی متد UpdateMessagesCollection برای اصلاح مشکل رفرش شدن صفحه
         private async Task UpdateMessagesCollection(List<MessageModel> newMessages)
         {
             if (newMessages == null || newMessages.Count == 0)
             {
-                // Only clear if there are messages in the collection
+                // Only clear if there are messages in the collection and this is intentional
                 if (Messages.Count > 0)
                 {
                     await MainThread.InvokeOnMainThreadAsync(() => {
-                        Messages.Clear();
-                        _messageSignatures.Clear();
+                        // Instead of clearing all at once, keep the existing messages
+                        // Set NoMessages flag appropriately
                         NoMessages = true;
                     });
                 }
@@ -249,60 +251,95 @@ namespace Solvix.Client.MVVM.ViewModels
             try
             {
                 // Update NoMessages based on new message count
-                NoMessages = newMessages.Count == 0;
+                bool hasMessages = newMessages.Count > 0;
 
                 await MainThread.InvokeOnMainThreadAsync(() => {
-                    // Process each new message
-                    foreach (var newMessage in newMessages.OrderBy(m => m.SentAt))
+                    // Sort messages first to ensure proper order
+                    var sortedNewMessages = newMessages.OrderBy(m => m.SentAt).ToList();
+
+                    // Track which messages need to be added (avoid removing and re-adding messages)
+                    var messagesToAdd = new List<MessageModel>();
+
+                    // Update existing messages and identify new ones
+                    foreach (var newMessage in sortedNewMessages)
                     {
                         // Check if this message is already in our collection
                         var signature = GenerateMessageSignature(newMessage);
-                        if (_messageSignatures.Contains(signature))
+                        var existingMessage = Messages.FirstOrDefault(m =>
+                            (m.Id > 0 && m.Id == newMessage.Id) || // Match by ID for server messages
+                            (GenerateMessageSignature(m) == signature)); // Match by signature for others
+
+                        if (existingMessage != null)
                         {
                             // Message already exists, just update properties
-                            var existingMessage = Messages.FirstOrDefault(m =>
-                                m.SenderId == newMessage.SenderId &&
-                                m.Content == newMessage.Content &&
-                                Math.Abs((m.SentAt - newMessage.SentAt).TotalSeconds) < 60);
+                            existingMessage.Status = newMessage.Status;
+                            existingMessage.IsRead = newMessage.IsRead;
+                            existingMessage.ReadAt = newMessage.ReadAt;
 
-                            if (existingMessage != null)
+                            // If temporary message got a server ID, update it
+                            if (existingMessage.Id < 0 && newMessage.Id > 0)
                             {
-                                // Update status, read state, etc.
-                                existingMessage.Status = newMessage.Status;
-                                existingMessage.IsRead = newMessage.IsRead;
-                                existingMessage.ReadAt = newMessage.ReadAt;
+                                existingMessage.Id = newMessage.Id;
+                                _tempToServerMessageIds[existingMessage.Id] = newMessage.Id;
                             }
-                            continue;
+
+                            // Track that we've processed this signature
+                            _messageSignatures.Add(signature);
                         }
-
-                        // Ensure the message has correct IsOwnMessage property
-                        newMessage.IsOwnMessage = newMessage.SenderId == _currentUserId;
-
-                        // Add the message and its signature
-                        Messages.Add(newMessage);
-                        _messageSignatures.Add(signature);
-                    }
-
-                    // Ensure messages are sorted by time
-                    var sortedMessages = Messages.OrderBy(m => m.SentAt).ToList();
-
-                    // Only replace if order has changed
-                    bool orderChanged = false;
-                    for (int i = 0; i < Messages.Count; i++)
-                    {
-                        if (i < sortedMessages.Count && !object.ReferenceEquals(Messages[i], sortedMessages[i]))
+                        else
                         {
-                            orderChanged = true;
-                            break;
+                            // New message to add
+                            // Ensure the message has correct IsOwnMessage property
+                            newMessage.IsOwnMessage = newMessage.SenderId == _currentUserId;
+
+                            // Add to our tracked signatures
+                            _messageSignatures.Add(signature);
+
+                            // Add to list of messages to add
+                            messagesToAdd.Add(newMessage);
                         }
                     }
 
-                    if (orderChanged)
+                    // Now add all the new messages at once to minimize UI updates
+                    if (messagesToAdd.Count > 0)
                     {
-                        Messages.Clear();
-                        foreach (var message in sortedMessages)
+                        foreach (var message in messagesToAdd)
                         {
                             Messages.Add(message);
+                        }
+
+                        NoMessages = false;
+                    }
+
+                    // Only re-sort if necessary - using stable sort to minimize movement
+                    if (messagesToAdd.Count > 0)
+                    {
+                        // Use a stable sort algorithm to minimize UI changes
+                        var properlyOrdered = Messages.OrderBy(m => m.SentAt).ToList();
+                        bool needsReordering = false;
+
+                        // Check if current order matches sorted order
+                        for (int i = 0; i < Messages.Count; i++)
+                        {
+                            if (Messages[i] != properlyOrdered[i])
+                            {
+                                needsReordering = true;
+                                break;
+                            }
+                        }
+
+                        // Only reorder if necessary
+                        if (needsReordering)
+                        {
+                            // Remember the scroll position (last message)
+                            var lastMessage = Messages.LastOrDefault();
+
+                            // Create a new collection to minimize UI updates
+                            var newCollection = new ObservableCollection<MessageModel>(properlyOrdered);
+                            Messages = newCollection;
+
+                            // This will trigger OnPropertyChanged and update the UI
+                            OnPropertyChanged(nameof(Messages));
                         }
                     }
                 });
@@ -555,22 +592,26 @@ namespace Solvix.Client.MVVM.ViewModels
                         ChatId = chatGuid,
                         SenderId = _currentUserId,
                         SenderName = "You", // Will be replaced by server response
-                        Status = Constants.MessageStatus.Sending,
+                        Status = Constants.MessageStatus.Sending, // Initially show as sending
                         SentAtFormatted = DateTime.Now.ToString("HH:mm"),
                         IsOwnMessage = true // Explicitly set for UI
                     };
 
-                    // Generate signature for this message
+                    // Generate signature for this message to avoid duplicates
                     var signature = GenerateMessageSignature(tempMessage);
                     _messageSignatures.Add(signature);
 
-                    // Add to local messages immediately
+                    // Add to local messages immediately without clearing the collection
                     await MainThread.InvokeOnMainThreadAsync(() => {
+                        // Add message to the end of the collection
                         Messages.Add(tempMessage);
                         NoMessages = false;
 
                         // Also add to chat's messages collection if exists
                         Chat?.Messages?.Add(tempMessage);
+
+                        // Ensure scroll to the new message
+                        OnPropertyChanged(nameof(Messages));
                     });
 
                     // Send the message through ChatService
@@ -599,15 +640,23 @@ namespace Solvix.Client.MVVM.ViewModels
                             var serverSignature = GenerateMessageSignature(serverMessage);
                             _messageSignatures.Add(serverSignature);
 
-                            // Find and replace the temporary message
+                            // Find the temporary message and update it - don't remove and replace
                             var tempMsg = Messages.FirstOrDefault(m => m.Id == tempId);
                             if (tempMsg != null)
                             {
-                                // Update the temp message with the server data
-                                var index = Messages.IndexOf(tempMsg);
+                                // Update properties directly on the existing message object
+                                tempMsg.Id = serverMessage.Id;
+                                tempMsg.Status = Constants.MessageStatus.Sent; // Change to single tick
+                                tempMsg.SentAt = serverMessage.SentAt;
+                                tempMsg.SentAtFormatted = serverMessage.SentAtFormatted;
+                                tempMsg.SenderName = serverMessage.SenderName;
+
+                                // Force UI update for this specific item
+                                int index = Messages.IndexOf(tempMsg);
                                 if (index >= 0)
                                 {
-                                    Messages[index] = serverMessage;
+                                    // Notify the specific item changed
+                                    Messages[index] = tempMsg; // This will trigger the CollectionChanged event
                                 }
 
                                 // Also update in chat's messages collection if it exists
@@ -616,11 +665,11 @@ namespace Solvix.Client.MVVM.ViewModels
                                     var chatTempMsg = Chat.Messages.FirstOrDefault(m => m.Id == tempId);
                                     if (chatTempMsg != null)
                                     {
-                                        var chatIndex = Chat.Messages.IndexOf(chatTempMsg);
-                                        if (chatIndex >= 0)
-                                        {
-                                            Chat.Messages[chatIndex] = serverMessage;
-                                        }
+                                        chatTempMsg.Id = serverMessage.Id;
+                                        chatTempMsg.Status = Constants.MessageStatus.Sent;
+                                        chatTempMsg.SentAt = serverMessage.SentAt;
+                                        chatTempMsg.SentAtFormatted = serverMessage.SentAtFormatted;
+                                        chatTempMsg.SenderName = serverMessage.SenderName;
                                     }
                                 }
                             }
@@ -629,13 +678,13 @@ namespace Solvix.Client.MVVM.ViewModels
                         }
                         else
                         {
-                            // Mark the temporary message as failed
+                            // Mark the temporary message as failed without replacing it
                             var tempMsg = Messages.FirstOrDefault(m => m.Id == tempId);
                             if (tempMsg != null)
                             {
                                 tempMsg.Status = Constants.MessageStatus.Failed;
 
-                                // Notify UI of the status change
+                                // Notify UI of the status change without replacing the message
                                 OnPropertyChanged(nameof(Messages));
                             }
 
@@ -814,6 +863,63 @@ namespace Solvix.Client.MVVM.ViewModels
             });
         }
 
+        private void OnMessageConfirmed(int messageId)
+        {
+            // در صورتی که messageId منفی باشد (پیام موقت)، باید از مپینگ استفاده کنیم
+            int targetMessageId = messageId;
+
+            Task.Run(async () => {
+                await _messageProcessingLock.WaitAsync();
+
+                try
+                {
+                    await MainThread.InvokeOnMainThreadAsync(() => {
+                        try
+                        {
+                            _logger.LogInformation("Message {MessageId} confirmed by server", messageId);
+
+                            // پیدا کردن پیام در کالکشن
+                            var message = Messages.FirstOrDefault(m => m.Id == messageId);
+
+                            // اگر پیام در کالکشن وجود ندارد، ممکن است یک پیام موقت باشد
+                            if (message == null)
+                            {
+                                // بررسی آیا این messageId در مپ موقت به دائم ما وجود دارد
+                                var tempId = _tempToServerMessageIds.FirstOrDefault(x => x.Value == messageId).Key;
+                                if (tempId != 0)
+                                {
+                                    // پیدا کردن پیام موقت
+                                    message = Messages.FirstOrDefault(m => m.Id == tempId);
+                                    if (message != null)
+                                    {
+                                        // به‌روزرسانی شناسه پیام موقت به شناسه دائم
+                                        message.Id = messageId;
+                                    }
+                                }
+                            }
+
+                            if (message != null)
+                            {
+                                // به‌روزرسانی وضعیت پیام به "ارسال شده" (یک تیک)
+                                message.Status = Constants.MessageStatus.Sent;
+
+                                // به‌روزرسانی UI
+                                OnPropertyChanged(nameof(Messages));
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Error handling message confirmation for {MessageId}", messageId);
+                        }
+                    });
+                }
+                finally
+                {
+                    _messageProcessingLock.Release();
+                }
+            });
+        }
+
         private async Task MarkMessageAsReadAsync(int messageId)
         {
             try
@@ -846,15 +952,24 @@ namespace Solvix.Client.MVVM.ViewModels
                             _logger.LogInformation("Message {MessageId} in chat {ChatId} marked as read",
                                 messageId, chatId);
 
+                            // پیدا کردن پیام در کالکشن
                             var message = Messages.FirstOrDefault(m => m.Id == messageId);
-                            if (message != null)
+
+                            if (message == null && _tempToServerMessageIds.ContainsValue(messageId))
                             {
-                                // Update status without replacing the entire object
+                                // پیدا کردن پیام موقت که به این messageId مپ شده است
+                                var tempId = _tempToServerMessageIds.FirstOrDefault(x => x.Value == messageId).Key;
+                                message = Messages.FirstOrDefault(m => m.Id == tempId);
+                            }
+
+                            if (message != null && message.IsOwnMessage)
+                            {
+                                // به‌روزرسانی وضعیت به "خوانده شده" (دو تیک) - فقط برای پیام‌های خودمان
                                 message.IsRead = true;
                                 message.ReadAt = DateTime.UtcNow;
                                 message.Status = Constants.MessageStatus.Read;
 
-                                // Notify UI of change
+                                // به‌روزرسانی UI
                                 OnPropertyChanged(nameof(Messages));
                             }
                         }
@@ -871,11 +986,12 @@ namespace Solvix.Client.MVVM.ViewModels
             });
         }
 
+
         private void OnUserStatusChanged(long userId, bool isOnline, DateTime? lastActive)
         {
             if (Chat?.OtherParticipant?.Id == userId)
             {
-                MainThread.BeginInvokeOnMainThreadAsync(() =>
+                MainThread.BeginInvokeOnMainThread(() =>
                 {
                     try
                     {

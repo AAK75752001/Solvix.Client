@@ -137,53 +137,86 @@
                 <DataTemplate x:DataType="models:MessageModel">
                     <Grid Padding="10,5">
                         <Border BackgroundColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='Color'}"
-                                StrokeThickness="0"
-                                StrokeShape="RoundRectangle 18,18,18,2"
-                                Padding="15,10"
-                                HorizontalOptions="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}}"
-                                MaximumWidthRequest="300">
+                    StrokeThickness="0"
+                    StrokeShape="RoundRectangle 18,18,18,2"
+                    Padding="15,10"
+                    HorizontalOptions="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}}"
+                    MaximumWidthRequest="300">
                             <Border.Shadow>
                                 <Shadow Brush="{DynamicResource ShadowColor}"
-                                        Offset="0,2"
-                                        Opacity="0.1"
-                                        Radius="3" />
+                            Offset="0,2"
+                            Opacity="0.1"
+                            Radius="3" />
                             </Border.Shadow>
 
                             <Grid RowDefinitions="*,Auto">
-                                <!-- Message Content -->
+                                <!-- محتوای پیام -->
                                 <Label Grid.Row="0" 
-                                       Text="{Binding Content}" 
-                                       TextColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='TextColor'}" 
-                                       FontSize="16"
-                                       LineBreakMode="WordWrap"
-                                       Margin="0,0,0,5" />
+                           Text="{Binding Content}" 
+                           TextColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='TextColor'}" 
+                           FontSize="16"
+                           LineBreakMode="WordWrap"
+                           Margin="0,0,0,5" />
 
-                                <!-- Time and Status -->
-                                <HorizontalStackLayout Grid.Row="1" 
-                                                       Spacing="5"
-                                                       HorizontalOptions="End">
-                                    <Label Text="{Binding TimeText}" 
-                                           TextColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='TextColor'}" 
-                                           FontSize="12"
-                                           VerticalOptions="Center"
-                                           Opacity="0.8" />
+                                <!-- زمان و وضعیت -->
+                                <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto">
+                                    <!-- نمایش وضعیت ارسال (فقط برای پیام‌های خودمان) -->
+                                    <Label Grid.Column="0"
+                               IsVisible="{Binding IsOwnMessage}"
+                               FontFamily="MaterialIcons"
+                               Text="{Binding StatusIcon}"
+                               TextColor="{Binding IsFailed, Converter={StaticResource BoolToColorConverter}, ConverterParameter='Error', FallbackValue={StaticResource SecondaryTextColor}}"
+                               VerticalOptions="Center"
+                               FontSize="14"
+                               Margin="0,0,5,0">
+                                        <Label.Triggers>
+                                            <DataTrigger TargetType="Label"
+                                             Binding="{Binding Status}"
+                                             Value="{x:Static local:Constants+MessageStatus.Sending}">
+                                                <Setter Property="Text" Value="⏱" />
+                                            </DataTrigger>
+                                            <DataTrigger TargetType="Label"
+                                             Binding="{Binding Status}"
+                                             Value="{x:Static local:Constants+MessageStatus.Sent}">
+                                                <Setter Property="Text" Value="✓" />
+                                            </DataTrigger>
+                                            <DataTrigger TargetType="Label"
+                                             Binding="{Binding Status}"
+                                             Value="{x:Static local:Constants+MessageStatus.Delivered}">
+                                                <Setter Property="Text" Value="✓" />
+                                            </DataTrigger>
+                                            <DataTrigger TargetType="Label"
+                                             Binding="{Binding Status}"
+                                             Value="{x:Static local:Constants+MessageStatus.Read}">
+                                                <Setter Property="Text" Value="✓✓" />
+                                            </DataTrigger>
+                                            <DataTrigger TargetType="Label"
+                                             Binding="{Binding Status}"
+                                             Value="{x:Static local:Constants+MessageStatus.Failed}">
+                                                <Setter Property="Text" Value="❌" />
+                                                <Setter Property="TextColor" Value="{DynamicResource ErrorColor}" />
+                                            </DataTrigger>
+                                        </Label.Triggers>
+                                    </Label>
 
-                                    <!-- Status Icon (Only for own messages) -->
-                                    <Label Text="{Binding StatusIcon}"
-                                           IsVisible="{Binding IsOwnMessage}"
-                                           FontSize="16"
-                                           Opacity="{Binding IsFailed, Converter={StaticResource InverseBoolConverter}, ConverterParameter='0.8', FallbackValue='0.8'}"
-                                           TextColor="{Binding IsFailed, Converter={StaticResource BoolToColorConverter}, ConverterParameter='Error', FallbackValue={StaticResource SecondaryTextColor}}"
-                                           VerticalOptions="Center" />
-                                </HorizontalStackLayout>
+                                    <!-- فضای خالی -->
+                                    <BoxView Grid.Column="1" BackgroundColor="Transparent" />
+
+                                    <!-- زمان پیام -->
+                                    <Label Grid.Column="2" 
+                               Text="{Binding TimeText}" 
+                               TextColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='TextColor'}" 
+                               FontSize="12"
+                               VerticalOptions="Center"
+                               Opacity="0.8" />
+                                </Grid>
                             </Grid>
                         </Border>
                     </Grid>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
-        </CollectionView>
 
-        <!-- Message Input -->
+            <!-- Message Input -->
         <Border Grid.Row="2" 
                 BackgroundColor="{DynamicResource CardBackgroundColor}"
                 StrokeThickness="0"
