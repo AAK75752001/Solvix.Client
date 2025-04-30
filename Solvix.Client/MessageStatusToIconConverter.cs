@@ -1,4 +1,5 @@
 ﻿using System.Globalization;
+using Solvix.Client.Core.Helpers;
 
 namespace Solvix.Client
 {
@@ -8,23 +9,31 @@ namespace Solvix.Client
         {
             if (value is int status)
             {
-                switch (status)
-                {
-                    case Core.Constants.MessageStatus.Failed:
-                        return "\ue000"; // error
-                    case Core.Constants.MessageStatus.Read:
-                        return "\ue8f0"; // done_all (filled)
-                    case Core.Constants.MessageStatus.Delivered:
-                        return "\ue5ca"; // done_all (outline)
-                    case Core.Constants.MessageStatus.Sent:
-                        return "\ue5ca"; // done (outline)
-                    case Core.Constants.MessageStatus.Sending:
-                    default:
-                        return "\ue192"; // watch_later
-                }
+                bool useEmoji = parameter?.ToString() != "IconCode";
+                return MessageStatusHelper.GetStatusIcon(status, useEmoji);
             }
 
-            return "\ue192"; // watch_later
+            // Default value
+            return "⏱"; // Watch icon as fallback
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            return Core.Constants.MessageStatus.Sending;
+        }
+    }
+
+    public class MessageStatusToOpacityConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is int status)
+            {
+                return MessageStatusHelper.GetStatusIconOpacity(status);
+            }
+
+            // Default opacity
+            return 0.5;
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

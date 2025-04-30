@@ -13,6 +13,8 @@ namespace Solvix.Client
         private readonly ISettingsService _settingsService;
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<App> _logger;
+        private readonly SemaphoreSlim _initLock = new SemaphoreSlim(1, 1);
+        private bool _isInitializing = false;
 
         public App(
             IAuthService authService,
@@ -46,7 +48,9 @@ namespace Solvix.Client
 
                 // Load theme and proceed with initialization
                 ApplyTheme();
-                SetInitialPage();
+
+                // Start initialization without waiting
+                Task.Run(async () => await InitializeAppAsync());
             }
             catch (Exception ex)
             {
@@ -81,6 +85,61 @@ namespace Solvix.Client
             }
         }
 
+        private async Task InitializeAppAsync()
+        {
+            // Prevent multiple initializations
+            if (_isInitializing)
+            {
+                _logger.LogWarning("App initialization already in progress");
+                return;
+            }
+
+            await _initLock.WaitAsync();
+
+            try
+            {
+                _isInitializing = true;
+                SetInitialPage();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during app initialization");
+
+                // Show error on main page if initialization fails
+                await MainThread.InvokeOnMainThreadAsync(() => {
+                    MainPage = new ContentPage
+                    {
+                        Content = new VerticalStackLayout
+                        {
+                            VerticalOptions = LayoutOptions.Center,
+                            HorizontalOptions = LayoutOptions.Center,
+                            Children =
+                            {
+                                new Label
+                                {
+                                    Text = "Failed to initialize application",
+                                    FontSize = 18,
+                                    HorizontalOptions = LayoutOptions.Center
+                                },
+                                new Label
+                                {
+                                    Text = ex.Message,
+                                    FontSize = 14,
+                                    HorizontalOptions = LayoutOptions.Center,
+                                    Margin = new Thickness(20, 10, 20, 0)
+                                }
+                            }
+                        }
+                    };
+                });
+            }
+            finally
+            {
+                _isInitializing = false;
+                _initLock.Release();
+            }
+        }
+
         private void SetInitialPage()
         {
             try
@@ -99,69 +158,73 @@ namespace Solvix.Client
                     isLoggedIn = false;
                 }
 
-                if (isLoggedIn)
-                {
-                    _logger.LogInformation("User is logged in, navigating to main app");
-                    MainPage = new AppShell();
-                }
-                else
-                {
-                    _logger.LogInformation("User is not logged in, navigating to login");
-
-                    try
+                MainThread.InvokeOnMainThreadAsync(() => {
+                    if (isLoggedIn)
                     {
-                        var loginPage = _serviceProvider.GetService<LoginPage>();
-                        if (loginPage != null)
-                        {
-                            MainPage = new NavigationPage(loginPage);
-                        }
-                        else
-                        {
-                            _logger.LogError("Failed to resolve LoginPage from service provider");
+                        _logger.LogInformation("User is logged in, navigating to main app");
+                        MainPage = new AppShell();
+                    }
+                    else
+                    {
+                        _logger.LogInformation("User is not logged in, navigating to login");
 
-                            // Create a simple error page instead of trying direct instantiation
+                        try
+                        {
+                            var loginPage = _serviceProvider.GetService<LoginPage>();
+                            if (loginPage != null)
+                            {
+                                MainPage = new NavigationPage(loginPage);
+                            }
+                            else
+                            {
+                                _logger.LogError("Failed to resolve LoginPage from service provider");
+
+                                // Create a simple error page instead of trying direct instantiation
+                                MainPage = new ContentPage
+                                {
+                                    Content = new Label
+                                    {
+                                        Text = "Error: Could not create login page",
+                                        HorizontalOptions = LayoutOptions.Center,
+                                        VerticalOptions = LayoutOptions.Center
+                                    }
+                                };
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Error creating login page");
+
+                            // Last resort - create a simple error page
                             MainPage = new ContentPage
                             {
                                 Content = new Label
                                 {
-                                    Text = "Error: Could not create login page",
+                                    Text = "Error loading login page: " + ex.Message,
                                     HorizontalOptions = LayoutOptions.Center,
                                     VerticalOptions = LayoutOptions.Center
                                 }
                             };
                         }
                     }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error creating login page");
-
-                        // Last resort - create a simple error page
-                        MainPage = new ContentPage
-                        {
-                            Content = new Label
-                            {
-                                Text = "Error loading login page: " + ex.Message,
-                                HorizontalOptions = LayoutOptions.Center,
-                                VerticalOptions = LayoutOptions.Center
-                            }
-                        };
-                    }
-                }
+                });
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Critical error setting initial page");
 
                 // Fallback UI
-                MainPage = new ContentPage
-                {
-                    Content = new Label
+                MainThread.InvokeOnMainThreadAsync(() => {
+                    MainPage = new ContentPage
                     {
-                        Text = "Error starting application: " + ex.Message,
-                        HorizontalOptions = LayoutOptions.Center,
-                        VerticalOptions = LayoutOptions.Center
-                    }
-                };
+                        Content = new Label
+                        {
+                            Text = "Error starting application: " + ex.Message,
+                            HorizontalOptions = LayoutOptions.Center,
+                            VerticalOptions = LayoutOptions.Center
+                        }
+                    };
+                });
             }
         }
 

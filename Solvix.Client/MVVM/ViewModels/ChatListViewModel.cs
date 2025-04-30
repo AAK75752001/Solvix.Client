@@ -23,6 +23,7 @@ namespace Solvix.Client.MVVM.ViewModels
         private ObservableCollection<ChatModel> _chats = new();
         private ObservableCollection<ChatModel> _filteredChats = new();
         private readonly Dictionary<long, bool> _userOnlineStatus = new();
+        private readonly SemaphoreSlim _loadLock = new SemaphoreSlim(1, 1);
 
         public bool IsLoading
         {
@@ -115,7 +116,7 @@ namespace Solvix.Client.MVVM.ViewModels
             _userService = userService;
             _logger = logger;
 
-            RefreshCommand = new Command(async () => await LoadChatsAsync());
+            RefreshCommand = new Command(async () => await LoadChatsAsync(true));
             ChatSelectedCommand = new Command<ChatModel>(async (chat) => await ChatSelectedAsync(chat));
             SearchCommand = new Command(() => FilterChats());
             ClearSearchCommand = new Command(() => SearchQuery = string.Empty);
@@ -125,29 +126,37 @@ namespace Solvix.Client.MVVM.ViewModels
             _signalRService.OnMessageRead += OnMessageRead;
             _signalRService.OnUserStatusChanged += OnUserStatusChanged;
 
+            // Initialize with some empty data to prevent UI issues
+            FilteredChats = new ObservableCollection<ChatModel>();
+
             // Initial load
             LoadChatsAsync().ConfigureAwait(false);
 
             // Also load online users
             LoadOnlineUsersAsync().ConfigureAwait(false);
-
-            // Initialize with some empty data to prevent UI issues
-            FilteredChats = new ObservableCollection<ChatModel>();
         }
 
-        public async Task LoadChatsAsync()
+        public async Task LoadChatsAsync(bool isRefresh = false)
         {
-            if (IsLoading) return;
+            // Use a lock to prevent multiple concurrent loads
+            if (!await _loadLock.WaitAsync(0))
+            {
+                _logger.LogInformation("Chat loading already in progress, ignoring duplicate request");
+                return;
+            }
 
             try
             {
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     IsLoading = true;
-                    IsRefreshing = true;
+                    if (isRefresh)
+                    {
+                        IsRefreshing = true;
+                    }
                 });
 
-                _logger.LogInformation("Loading chats");
+                _logger.LogInformation("Loading chats (refresh: {IsRefresh})", isRefresh);
 
                 var chats = await _chatService.GetChatsAsync();
 
@@ -191,6 +200,8 @@ namespace Solvix.Client.MVVM.ViewModels
                     IsLoading = false;
                     IsRefreshing = false;
                 });
+
+                _loadLock.Release();
             }
         }
 
@@ -204,7 +215,7 @@ namespace Solvix.Client.MVVM.ViewModels
                 // Update the status cache
                 if (onlineUsers != null)
                 {
-                    // First set all users to offline
+                    // First clear our cache
                     _userOnlineStatus.Clear();
 
                     // Then mark online users as online
@@ -251,18 +262,6 @@ namespace Solvix.Client.MVVM.ViewModels
 
                                 _logger.LogDebug("Updated online status for user {UserId} to {IsOnline}",
                                     participant.Id, isOnline);
-                            }
-                        }
-                        else
-                        {
-                            // If we don't have a status, assume offline
-                            if (participant.IsOnline)
-                            {
-                                participant.IsOnline = false;
-                                updatedAny = true;
-
-                                _logger.LogDebug("Set user {UserId} to offline (not found in online users)",
-                                    participant.Id);
                             }
                         }
                     }
@@ -320,14 +319,21 @@ namespace Solvix.Client.MVVM.ViewModels
 
             try
             {
-                // اضافه کردن timestamp به عنوان پارامتر ناوبری برای جلوگیری از تشخیص مسیر تکراری
-                var navigationParameter = new Dictionary<string, object>
-        {
-            { "ChatId", chat.Id.ToString() },
-            { "t", DateTime.Now.Ticks.ToString() } // Add timestamp for uniqueness
-        };
+                _logger.LogInformation("Navigating to chat: {ChatId}", chat.Id);
 
+                // Add timestamp to navigation parameters to ensure uniqueness each time
+                var navigationParameter = new Dictionary<string, object>
+                {
+                    { "ChatId", chat.Id.ToString() },
+                    { "t", DateTime.Now.Ticks.ToString() } // Timestamp for uniqueness
+                };
+
+                // Use relative path to avoid navigation stack issues
                 await Shell.Current.GoToAsync($"{nameof(ChatPage)}", navigationParameter);
+
+                // After navigating, mark chat as read in UI
+                chat.UnreadCount = 0;
+                OnPropertyChanged(nameof(FilteredChats));
             }
             catch (Exception ex)
             {
@@ -338,7 +344,7 @@ namespace Solvix.Client.MVVM.ViewModels
 
         private void OnMessageReceived(MessageModel message)
         {
-            MainThread.BeginInvokeOnMainThread(async () =>
+            MainThread.InvokeOnMainThreadAsync(async () =>
             {
                 try
                 {
@@ -363,6 +369,7 @@ namespace Solvix.Client.MVVM.ViewModels
                         chatsList.Insert(0, chat);
 
                         Chats = new ObservableCollection<ChatModel>(chatsList);
+                        OnPropertyChanged(nameof(FilteredChats));
                     }
                     else
                     {
@@ -379,17 +386,15 @@ namespace Solvix.Client.MVVM.ViewModels
 
         private void OnMessageRead(Guid chatId, int messageId)
         {
-            MainThread.BeginInvokeOnMainThread(async () =>
+            MainThread.InvokeOnMainThreadAsync(async () =>
             {
                 try
                 {
-                    // Find the chat and update its message read status
+                    // Just refresh chats if needed
                     var chat = Chats.FirstOrDefault(c => c.Id == chatId);
-
                     if (chat != null)
                     {
-                        // For simplicity, just refresh chats
-                        await LoadChatsAsync();
+                        await LoadChatsAsync(true);
                     }
                 }
                 catch (Exception ex)
@@ -401,7 +406,7 @@ namespace Solvix.Client.MVVM.ViewModels
 
         private void OnUserStatusChanged(long userId, bool isOnline, DateTime? lastActive)
         {
-            MainThread.BeginInvokeOnMainThread(async () =>
+            MainThread.InvokeOnMainThreadAsync(() =>
             {
                 try
                 {
@@ -439,6 +444,25 @@ namespace Solvix.Client.MVVM.ViewModels
                     _logger.LogError(ex, "Error updating user status");
                 }
             });
+        }
+
+        public void RefreshChat(Guid chatId)
+        {
+            // Try to find and refresh a specific chat
+            var chat = Chats.FirstOrDefault(c => c.Id == chatId);
+            if (chat != null)
+            {
+                MainThread.InvokeOnMainThreadAsync(() =>
+                {
+                    // Trigger a UI refresh
+                    var index = Chats.IndexOf(chat);
+                    if (index >= 0)
+                    {
+                        Chats[index] = chat;
+                        OnPropertyChanged(nameof(FilteredChats));
+                    }
+                });
+            }
         }
 
         #region INotifyPropertyChanged

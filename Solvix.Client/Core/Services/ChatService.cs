@@ -383,45 +383,52 @@ namespace Solvix.Client.Core.Services
             }
         }
 
-        public async Task<List<ChatModel>> GetChatsAsync()
+
+
+        private async Task<ChatModel> ProcessChatModelAsync(ChatModel chat)
         {
+            if (chat == null) return null;
+
             try
             {
-                _logger.LogInformation("Fetching chats");
+                // Initialize collections if they're null
+                chat.Participants ??= new List<UserModel>();
+                chat.Messages ??= new ObservableCollection<MessageModel>();
 
-                var response = await _apiService.GetAsync<List<ChatModel>>(Constants.Endpoints.GetChats);
+                // Get the current user ID
+                var currentUserId = await GetCurrentUserIdAsync();
 
-                if (response != null)
+                // Process participant online status
+                foreach (var participant in chat.Participants)
                 {
-                    // Log online status for debugging
-                    foreach (var chat in response)
+                    // Current user is always online from their perspective
+                    if (participant.Id == currentUserId)
                     {
-                        foreach (var participant in chat.Participants)
-                        {
-                            _logger.LogDebug("Participant {UserId} ({Username}) in chat {ChatId} - IsOnline: {IsOnline}",
-                                participant.Id, participant.Username, chat.Id, participant.IsOnline);
-                        }
+                        participant.IsOnline = true;
+                        _logger.LogDebug("Current user (self) {UserId} marked as online", participant.Id);
                     }
-
-                    // Initialize computed properties for each chat
-                    foreach (var chat in response)
+                    else
                     {
-                        chat.InitializeComputedProperties();
+                        // Keep whatever online status was returned from the server
+                        // Don't override server-provided online status
+                        _logger.LogDebug("Participant {UserId} online status from server: {IsOnline}",
+                            participant.Id, participant.IsOnline);
                     }
-
-                    return response;
                 }
 
-                return new List<ChatModel>();
+                // Initialize computed properties to ensure proper functioning
+                chat.InitializeComputedProperties();
+
+                return chat;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to load chats");
-                throw;
+                _logger.LogError(ex, "Error processing chat model");
+                return chat; // Return original on error
             }
         }
 
-        public async Task<ChatModel?> GetChatAsync(Guid chatId)
+        public async Task<ChatModel> GetChatAsync(Guid chatId)
         {
             try
             {
@@ -432,45 +439,57 @@ namespace Solvix.Client.Core.Services
 
                 if (chat != null)
                 {
-                    // Initialize collections if they're null
-                    chat.Participants ??= new List<UserModel>();
-                    chat.Messages ??= new ObservableCollection<MessageModel>();
-
-                    // Get the current user ID to determine which participant is the "other" one
-                    var currentUserId = await GetCurrentUserIdAsync();
-
-                    // Log participant details
-                    foreach (var participant in chat.Participants)
-                    {
-                        // Mark our own participant as online (from our perspective)
-                        if (participant.Id == currentUserId)
-                        {
-                            participant.IsOnline = true;
-                        }
-
-                        _logger.LogDebug("Participant {UserId} ({Username}): IsOnline = {IsOnline}, Current User = {IsCurrentUser}",
-                            participant.Id, participant.Username, participant.IsOnline, participant.Id == currentUserId);
-                    }
-
-                    // Initialize computed properties
-                    chat.InitializeComputedProperties();
+                    // Process the chat model (handle online status, etc.)
+                    var processedChat = await ProcessChatModelAsync(chat);
 
                     // Tell SignalR to clear its message tracking when changing chats
                     await _signalRService.ClearMessageTrackingAsync();
 
-                    _logger.LogInformation("Successfully retrieved chat {ChatId}", chatId);
-                    return chat;
-                }
-                else
-                {
-                    _logger.LogWarning("Chat not found: {ChatId}", chatId);
+                    _logger.LogInformation("Successfully retrieved and processed chat {ChatId}", chatId);
+                    return processedChat;
                 }
 
+                _logger.LogWarning("Chat not found: {ChatId}", chatId);
                 return null;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to load chat {ChatId}", chatId);
+                throw;
+            }
+        }
+
+
+        public async Task<List<ChatModel>> GetChatsAsync()
+        {
+            try
+            {
+                _logger.LogInformation("Fetching chats");
+
+                var response = await _apiService.GetAsync<List<ChatModel>>(Constants.Endpoints.GetChats);
+
+                if (response != null)
+                {
+                    // Process each chat model to handle online status and computed properties
+                    var processedChats = new List<ChatModel>();
+
+                    foreach (var chat in response)
+                    {
+                        var processedChat = await ProcessChatModelAsync(chat);
+                        if (processedChat != null)
+                        {
+                            processedChats.Add(processedChat);
+                        }
+                    }
+
+                    return processedChats;
+                }
+
+                return new List<ChatModel>();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to load chats");
                 throw;
             }
         }

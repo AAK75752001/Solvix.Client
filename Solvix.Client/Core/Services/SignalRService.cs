@@ -81,7 +81,8 @@ namespace Solvix.Client.Core.Services
                         };
 
                         // Add timeouts for debugging
-                        options.HttpMessageHandlerFactory = handler => {
+                        options.HttpMessageHandlerFactory = handler =>
+                        {
                             if (handler is HttpClientHandler clientHandler)
                             {
                                 // Increase timeout
@@ -128,7 +129,7 @@ namespace Solvix.Client.Core.Services
         {
             try
             {
-                // تنظیم رویداد دریافت پیام
+                // Set up event for receiving messages
                 _hubConnection.On<int, long, string, string, Guid, DateTime>("ReceiveMessage",
                     async (messageId, senderId, senderName, content, chatId, sentAt) =>
                     {
@@ -136,10 +137,10 @@ namespace Solvix.Client.Core.Services
 
                         try
                         {
-                            // ایجاد کلید منحصر به فرد برای این پیام
+                            // Create a unique key for this message
                             string messageKey = $"{messageId}:{chatId}:{senderId}:{content.GetHashCode()}";
 
-                            // بررسی پیام‌های تکراری
+                            // Check for duplicate messages
                             if (_processedMessageKeys.Contains(messageKey))
                             {
                                 _logger.LogDebug("Skipping duplicate message {MessageId} from {SenderName} in chat {ChatId}",
@@ -147,13 +148,13 @@ namespace Solvix.Client.Core.Services
                                 return;
                             }
 
-                            // اضافه کردن به لیست پیام‌های پردازش شده
+                            // Add to list of processed messages
                             _processedMessageKeys.Add(messageKey);
 
                             _logger.LogInformation("Received message {MessageId} from {SenderName} in chat {ChatId}",
                                 messageId, senderName, chatId);
 
-                            // دریافت آیدی کاربر فعلی برای تشخیص وضعیت پیام
+                            // Get current user ID to determine message state
                             var userIdStr = await _secureStorageService.GetAsync(Constants.StorageKeys.UserId);
                             long currentUserId = 0;
 
@@ -162,7 +163,7 @@ namespace Solvix.Client.Core.Services
                                 currentUserId = userId;
                             }
 
-                            // ایجاد آبجکت پیام
+                            // Create message object
                             var message = new MessageModel
                             {
                                 Id = messageId,
@@ -174,27 +175,27 @@ namespace Solvix.Client.Core.Services
                                 IsRead = false
                             };
 
-                            // تنظیم وضعیت پیام بر اساس فرستنده
+                            // Set message status based on sender
                             bool isOwnMessage = senderId == currentUserId;
                             message.IsOwnMessage = isOwnMessage;
 
-                            // تنظیم وضعیت (استاتوس) پیام
+                            // Set message status
                             if (isOwnMessage)
                             {
-                                // پیام ارسالی خود کاربر - نشان دادن با یک تیک
+                                // Own message - show with single tick
                                 message.Status = Constants.MessageStatus.Sent;
                             }
                             else
                             {
-                                // پیام دریافتی - تحویل داده شده
+                                // Received message - mark as delivered
                                 message.Status = Constants.MessageStatus.Delivered;
 
-                                // اگر پیام دریافتی است، آن را به عنوان خوانده شده علامت بزنیم
-                                // این کار باعث می‌شود فوراً برای فرستنده، وضعیت خوانده شدن ارسال شود
+                                // If it's a received message, mark it as read
+                                // This will immediately send read status to sender
                                 _ = MarkMessageAsReadAsync(message.Id);
                             }
 
-                            // اعلان به ویومدل‌های مربوطه
+                            // Notify relevant viewmodels
                             await MainThread.InvokeOnMainThreadAsync(() =>
                             {
                                 OnMessageReceived?.Invoke(message);
@@ -212,22 +213,33 @@ namespace Solvix.Client.Core.Services
                     _logger.LogInformation("Message {MessageId} in chat {ChatId} marked as read",
                         messageId, chatId);
 
-                    // تنظیم وضعیت پیام به حالت خوانده شده (دو تیک)
-                    // این رویداد زمانی اتفاق می‌افتد که گیرنده پیام ما را خوانده است
-                    OnMessageRead?.Invoke(chatId, messageId);
+                    // Set message status to read (double tick)
+                    // This event occurs when receiver has read our message
+                    MainThread.InvokeOnMainThreadAsync(() =>
+                    {
+                        OnMessageRead?.Invoke(chatId, messageId);
+                    });
                 });
 
-                // تنظیم رویداد تأیید ارسال پیام
+                // Set up message confirmation event
                 _hubConnection.On<int>("MessageSentConfirmation", (messageId) =>
                 {
                     _logger.LogInformation("Message {MessageId} confirmed as sent by server", messageId);
-                    OnMessageConfirmed?.Invoke(messageId);
+
+                    MainThread.InvokeOnMainThreadAsync(() =>
+                    {
+                        OnMessageConfirmed?.Invoke(messageId);
+                    });
                 });
 
                 _hubConnection.On<string>("ReceiveError", (errorMessage) =>
                 {
                     _logger.LogWarning("Received error from SignalR: {ErrorMessage}", errorMessage);
-                    OnError?.Invoke(errorMessage);
+
+                    MainThread.InvokeOnMainThreadAsync(() =>
+                    {
+                        OnError?.Invoke(errorMessage);
+                    });
                 });
 
                 _hubConnection.On<long, bool, DateTime?>("UserStatusChanged", (userId, isOnline, lastActive) =>
@@ -235,7 +247,10 @@ namespace Solvix.Client.Core.Services
                     _logger.LogInformation("User {UserId} status changed: Online = {IsOnline}, LastActive = {LastActive}",
                         userId, isOnline, lastActive);
 
-                    OnUserStatusChanged?.Invoke(userId, isOnline, lastActive);
+                    MainThread.InvokeOnMainThreadAsync(() =>
+                    {
+                        OnUserStatusChanged?.Invoke(userId, isOnline, lastActive);
+                    });
                 });
 
                 // Handler for reconnection events
@@ -340,14 +355,16 @@ namespace Solvix.Client.Core.Services
                         _retryAttempts++;
 
                         // Schedule a retry in the background
-                        Task.Run(async () => {
+                        Task.Run(async () =>
+                        {
                             await Task.Delay(1000 * _retryAttempts);
                             await ConnectAsync();
                         });
                     }
                     else if (_showConnectionErrors)
                     {
-                        await MainThread.InvokeOnMainThreadAsync(async () => {
+                        await MainThread.InvokeOnMainThreadAsync(async () =>
+                        {
                             await _toastService.ShowToastAsync("Could not connect to chat service. Some features may be limited.", ToastType.Warning);
                         });
                     }
@@ -360,7 +377,8 @@ namespace Solvix.Client.Core.Services
                     // Don't show a toast for every retry - only show after max retries
                     if (_retryAttempts >= MaxRetryAttempts && _showConnectionErrors)
                     {
-                        await MainThread.InvokeOnMainThreadAsync(async () => {
+                        await MainThread.InvokeOnMainThreadAsync(async () =>
+                        {
                             await _toastService.ShowToastAsync("Could not connect to chat service. Some features may be limited.", ToastType.Warning);
                         });
                     }
@@ -472,7 +490,7 @@ namespace Solvix.Client.Core.Services
         {
             try
             {
-                // تنها در صورت اتصال به سیگنال‌آر
+                // Only if connected to SignalR
                 if (_hubConnection.State != HubConnectionState.Connected)
                 {
                     _logger.LogInformation("Not connected to SignalR, marking read status via API only");
@@ -491,7 +509,6 @@ namespace Solvix.Client.Core.Services
                 _logger.LogError(ex, "Error marking message {MessageId} as read via SignalR", messageId);
             }
         }
-
 
         public async Task MarkMessagesAsReadAsync(List<int> messageIds)
         {
