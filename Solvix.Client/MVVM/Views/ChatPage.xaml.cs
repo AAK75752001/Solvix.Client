@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Solvix.Client.MVVM.ViewModels;
 
 namespace Solvix.Client.MVVM.Views;
@@ -32,6 +32,9 @@ public partial class ChatPage : ContentPage
 
             _viewModel = viewModel;
             _logger = logger;
+
+            // مهم: وابستگی را در سازنده تنظیم می‌کنیم
+            // اما ChatId را باید بعداً از QueryProperty بگیریم
             BindingContext = _viewModel;
 
             _logger.LogInformation("ChatPage initialized");
@@ -42,12 +45,14 @@ public partial class ChatPage : ContentPage
         }
     }
 
+
     protected override void OnAppearing()
     {
         base.OnAppearing();
         _logger.LogInformation("ChatPage appearing, ChatId: {ChatId}", _chatId);
 
-        if (_viewModel != null && !string.IsNullOrEmpty(_chatId) && _viewModel.ChatId != _chatId)
+        // این حتماً باید اجرا شود تا ChatViewModel با ChatId جدید آپدیت شود
+        if (_viewModel != null && !string.IsNullOrEmpty(_chatId))
         {
             _viewModel.ChatId = _chatId;
         }

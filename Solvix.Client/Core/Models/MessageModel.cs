@@ -190,18 +190,22 @@ namespace Solvix.Client.Core.Models
             get
             {
                 if (IsFailed)
-                    return "❌"; // Unicode error symbol (خطا در ارسال)
+                    return "❌"; // نماد خطا (پیام ارسال نشده)
+
+                if (Status == Constants.MessageStatus.Sending)
+                    return "⏱"; // ساعت (در حال ارسال)
 
                 if (IsReadByReceiver)
-                    return "✓✓"; // Unicode double check mark for read (خوانده شده)
+                    return "✓✓"; // دو تیک (خوانده شده)
 
                 if (IsDelivered)
-                    return "✓"; // Unicode single check mark for delivered (تحویل داده شده)
+                    return "✓"; // یک تیک (تحویل داده شده)
 
                 if (IsSent)
-                    return "✓"; // Unicode single check mark for sent (ارسال شده)
+                    return "✓"; // یک تیک (ارسال شده)
 
-                return "⏱"; // Unicode watch symbol for sending (در حال ارسال)
+                // حالت پیش‌فرض
+                return "⏱"; // ساعت (در حال ارسال)
             }
         }
 

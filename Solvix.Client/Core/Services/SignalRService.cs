@@ -27,8 +27,8 @@ namespace Solvix.Client.Core.Services
         public event Action<MessageModel> OnMessageReceived;
         public event Action<Guid, int> OnMessageRead;
         public event Action<string> OnError;
-        public event Action<int> OnMessageConfirmed;
         public event Action<long, bool, DateTime?> OnUserStatusChanged;
+        public event Action<int> OnMessageConfirmed;
 
         public SignalRService(
             ISecureStorageService secureStorageService,
@@ -220,11 +220,7 @@ namespace Solvix.Client.Core.Services
                 // تنظیم رویداد تأیید ارسال پیام
                 _hubConnection.On<int>("MessageSentConfirmation", (messageId) =>
                 {
-                    _logger.LogInformation("Message {MessageId} confirmed as sent and stored on server",
-                        messageId);
-
-                    // می‌توانیم یک رویداد جدید برای تأیید دریافت پیام توسط سرور ایجاد کنیم
-                    // این باعث می‌شود وضعیت پیام از "در حال ارسال" به "ارسال شده" (یک تیک) تغییر کند 
+                    _logger.LogInformation("Message {MessageId} confirmed as sent by server", messageId);
                     OnMessageConfirmed?.Invoke(messageId);
                 });
 

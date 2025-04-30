@@ -21,6 +21,8 @@ namespace Solvix.Client.Core.Models
             }
         }
 
+
+
         [JsonIgnore]
         public string Initials
         {
@@ -73,3 +75,4 @@ namespace Solvix.Client.Core.Models
         }
     }
 }
+
