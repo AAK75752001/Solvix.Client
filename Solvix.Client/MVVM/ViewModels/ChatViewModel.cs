@@ -37,6 +37,11 @@ namespace Solvix.Client.MVVM.ViewModels
         private readonly HashSet<string> _messageSignatures = new();
         private readonly SemaphoreSlim _messageProcessingLock = new SemaphoreSlim(1, 1);
 
+        private string GenerateMessageSignature(MessageModel message)
+        {
+            return $"{message.SenderId}:{message.Content.GetHashCode()}:{message.SentAt.Ticks}";
+        }
+
         public string ChatId
         {
             get => _chatId;
@@ -246,14 +251,7 @@ namespace Solvix.Client.MVVM.ViewModels
             _logger.LogInformation("ChatViewModel initialized");
         }
 
-        // Generate a unique signature for a message to aid in deduplication
-        private string GenerateMessageSignature(MessageModel message)
-        {
-            return $"{message.SenderId}:{message.Content}:{message.SentAt.Ticks}";
-        }
 
-        // Smoothly update the messages collection without replacing it completely
-        // جایگزینی متد UpdateMessagesCollection برای اصلاح مشکل رفرش شدن صفحه
         private async Task UpdateMessagesCollection(List<MessageModel> newMessages)
         {
             if (newMessages == null || newMessages.Count == 0)
@@ -392,17 +390,12 @@ namespace Solvix.Client.MVVM.ViewModels
                 var otherParticipant = Chat.Participants.FirstOrDefault(p => p.Id != currentUserId);
                 if (otherParticipant != null)
                 {
-                    // If we don't have explicit online status, assume offline
-                    // The SignalR service will update if they're actually online
+                    // نکته مهم: فرض اولیه را بر آفلاین بودن می‌گذاریم، مگر اینکه از وضعیت آنلاین بودن اطمینان داشته باشیم
                     _logger.LogInformation("Setting participant {UserId} ({Name}) as offline by default",
                         otherParticipant.Id, otherParticipant.DisplayName);
 
-                    // ما به صورت پیش‌فرض فرض می‌کنیم کاربر آفلاین است
-                    // فقط وقتی SignalR به ما خبر می‌دهد که این کاربر آنلاین است، آن را به‌روزرسانی می‌کنیم
-                    if (!otherParticipant.IsOnline)
-                    {
-                        otherParticipant.IsOnline = false;
-                    }
+                    // اجبار به آفلاین نشان دادن کاربران مقابل
+                    otherParticipant.IsOnline = false;
                 }
 
                 // Mark ourselves as online
@@ -624,21 +617,28 @@ namespace Solvix.Client.MVVM.ViewModels
                     IsOwnMessage = true // Explicitly set for UI
                 };
 
-                // Generate signature for this message to avoid duplicates
-                var signature = GenerateMessageSignature(tempMessage);
-                _messageSignatures.Add(signature);
-
-                // Directly add the message to our collection without recreating it or waiting for the server
-                Messages.Add(tempMessage);
-                if (Messages.Count == 1)
+                // Immediately add to collection for instant feedback
+                await MainThread.InvokeOnMainThreadAsync(() =>
                 {
-                    NoMessages = false;
+                    Messages.Add(tempMessage);
+                    if (Messages.Count == 1)
+                    {
+                        NoMessages = false;
+                    }
+                });
+
+                // Generate a signature to help identify duplicates
+                var signature = $"{tempMessage.SenderId}:{tempMessage.Content.GetHashCode()}:{tempMessage.SentAt.Ticks}";
+                if (_messageSignatures == null)
+                {
+                    _messageSignatures = new HashSet<string>();
                 }
+                _messageSignatures.Add(signature);
 
                 // Also add to chat's messages collection if it exists
                 Chat?.Messages?.Add(tempMessage);
 
-                // Send the message through ChatService in background
+                // Send the message through API
                 MessageModel serverMessage = null;
                 try
                 {
@@ -655,27 +655,29 @@ namespace Solvix.Client.MVVM.ViewModels
                     // Set the server message to match the temp message's isOwnMessage property
                     serverMessage.IsOwnMessage = true;
 
-                    // Keep track of the relationship between temp and server messages
-                    if (tempId != 0 && serverMessage.Id > 0)
-                    {
-                        _tempToServerMessageIds[tempId] = serverMessage.Id;
-                    }
-
-                    // Add server message signature to avoid duplication when receiving via SignalR
-                    var serverSignature = GenerateMessageSignature(serverMessage);
+                    // Add server message signature
+                    var serverSignature = $"{serverMessage.SenderId}:{serverMessage.Content.GetHashCode()}:{serverMessage.SentAt.Ticks}";
                     _messageSignatures.Add(serverSignature);
 
                     // Find the temporary message and update it - don't remove and replace
                     var tempMsg = Messages.FirstOrDefault(m => m.Id == tempId);
                     if (tempMsg != null)
                     {
-                        // Just update the properties that need to change
+                        // Only update on UI thread
                         await MainThread.InvokeOnMainThreadAsync(() =>
                         {
+                            // Store the mapping for later reference
+                            if (_tempToServerMessageIds == null)
+                            {
+                                _tempToServerMessageIds = new Dictionary<int, int>();
+                            }
+                            _tempToServerMessageIds[tempId] = serverMessage.Id;
+
+                            // Update temp message with server data
                             tempMsg.Id = serverMessage.Id;
                             tempMsg.Status = Constants.MessageStatus.Sent; // Change to single tick
                             tempMsg.SentAt = serverMessage.SentAt;
-                            tempMsg.SentAtFormatted = FormatLocalTime(serverMessage.SentAt);
+                            tempMsg.SentAtFormatted = FormatLocalTime(serverMessage.SentAt.ToLocalTime());
                             tempMsg.SenderName = serverMessage.SenderName;
                         });
 
@@ -758,6 +760,11 @@ namespace Solvix.Client.MVVM.ViewModels
 
             Task.Run(async () =>
             {
+                if (_messageProcessingLock == null)
+                {
+                    _messageProcessingLock = new SemaphoreSlim(1, 1);
+                }
+
                 await _messageProcessingLock.WaitAsync();
 
                 try
@@ -777,18 +784,25 @@ namespace Solvix.Client.MVVM.ViewModels
                             message.IsOwnMessage = isOwnMessage;
 
                             // Generate message signature for deduplication
-                            var signature = GenerateMessageSignature(message);
+                            string signature = GenerateMessageSignature(message);
 
-                            // Check if this is a duplicate
+                            // Initialize if needed
+                            if (_messageSignatures == null)
+                            {
+                                _messageSignatures = new HashSet<string>();
+                            }
+
+                            // Check if this is a duplicate by signature
                             if (_messageSignatures.Contains(signature))
                             {
                                 _logger.LogDebug("Ignoring duplicate message: {Signature}", signature);
 
-                                // Just update status for existing message
+                                // Check for matching message by ID
                                 var existingMessage = Messages.FirstOrDefault(m =>
-                                    m.SenderId == message.SenderId &&
-                                    m.Content == message.Content &&
-                                    Math.Abs((m.SentAt - message.SentAt).TotalSeconds) < 60);
+                                    (m.Id > 0 && m.Id == message.Id) || // Match by ID
+                                    (m.SenderId == message.SenderId &&
+                                     m.Content == message.Content &&
+                                     Math.Abs((m.SentAt - message.SentAt).TotalSeconds) < 60)); // Or by content and time
 
                                 if (existingMessage != null)
                                 {
@@ -797,8 +811,16 @@ namespace Solvix.Client.MVVM.ViewModels
                                     existingMessage.IsRead = message.IsRead;
                                     existingMessage.ReadAt = message.ReadAt;
 
-                                    // Force UI update
-                                    OnPropertyChanged(nameof(Messages));
+                                    // If this was a temporary message that now has a server ID, update it
+                                    if (existingMessage.Id < 0 && message.Id > 0)
+                                    {
+                                        if (_tempToServerMessageIds == null)
+                                        {
+                                            _tempToServerMessageIds = new Dictionary<int, int>();
+                                        }
+                                        _tempToServerMessageIds[existingMessage.Id] = message.Id;
+                                        existingMessage.Id = message.Id;
+                                    }
                                 }
 
                                 return;
@@ -807,7 +829,7 @@ namespace Solvix.Client.MVVM.ViewModels
                             // This is a new message we haven't seen before
                             _messageSignatures.Add(signature);
 
-                            // If this is an own message, it might match a temporary message
+                            // Check if this is our own message matching a temporary one
                             if (isOwnMessage)
                             {
                                 var tempMessage = Messages.FirstOrDefault(m =>
@@ -817,7 +839,11 @@ namespace Solvix.Client.MVVM.ViewModels
 
                                 if (tempMessage != null)
                                 {
-                                    // Found a temporary message, replace it with server data
+                                    // Found a temporary message, update it with server data
+                                    if (_tempToServerMessageIds == null)
+                                    {
+                                        _tempToServerMessageIds = new Dictionary<int, int>();
+                                    }
                                     _tempToServerMessageIds[tempMessage.Id] = message.Id;
 
                                     tempMessage.Id = message.Id;
@@ -825,26 +851,13 @@ namespace Solvix.Client.MVVM.ViewModels
                                     tempMessage.SentAt = message.SentAt;
                                     tempMessage.SentAtFormatted = message.SentAtFormatted;
 
-                                    // Force UI update
-                                    OnPropertyChanged(nameof(Messages));
                                     return; // Handled the temp->server message, no need to add
                                 }
                             }
 
-                            // Genuinely new message
+                            // Genuinely new message, add it to the collection
                             Messages.Add(message);
                             NoMessages = false;
-
-                            // Also add to chat's messages collection
-                            Chat?.Messages?.Add(message);
-
-                            // Sort messages by time
-                            var sortedMessages = Messages.OrderBy(m => m.SentAt).ToList();
-                            Messages.Clear();
-                            foreach (var msg in sortedMessages)
-                            {
-                                Messages.Add(msg);
-                            }
 
                             // Mark as read immediately if it's not our own
                             if (!isOwnMessage)
@@ -1074,16 +1087,18 @@ namespace Solvix.Client.MVVM.ViewModels
         {
             if (Chat?.OtherParticipant?.Id == userId)
             {
-                MainThread.BeginInvokeOnMainThread(() =>
+                MainThread.BeginInvokeOnMainThreadAsync(() =>
                 {
                     try
                     {
                         _logger.LogInformation("User {UserId} status changed: Online = {IsOnline}, LastActive = {LastActive}",
                             userId, isOnline, lastActive);
 
+                        // فقط اگر کاربر واقعاً آنلاین باشد، وضعیتش را آنلاین نشان بده
                         Chat.OtherParticipant.IsOnline = isOnline;
                         Chat.OtherParticipant.LastActive = lastActive;
 
+                        // Force UI refresh
                         OnPropertyChanged(nameof(Chat));
                     }
                     catch (Exception ex)
@@ -1093,6 +1108,7 @@ namespace Solvix.Client.MVVM.ViewModels
                 });
             }
         }
+        
 
         #region INotifyPropertyChanged
 

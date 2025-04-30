@@ -8,48 +8,51 @@ namespace Solvix.Client
         {
             if (value is bool isOwnMessage)
             {
-                // For color conversions
-                if (parameter != null && parameter.ToString() == "Color" &&
-                    typeof(Color).IsAssignableFrom(targetType))
+                // برای تبدیل رنگ
+                if (parameter != null)
                 {
-                    try
+                    string paramStr = parameter.ToString();
+
+                    if (paramStr == "BgColor" && typeof(Color).IsAssignableFrom(targetType))
                     {
-                        return isOwnMessage
-                            ? Application.Current.Resources["SentMessageBubbleColor"]
-                            : Application.Current.Resources["ReceivedMessageBubbleColor"];
+                        try
+                        {
+                            // برای رنگ زمینه پیام
+                            return isOwnMessage
+                                ? Application.Current.Resources["SentMessageBubbleColor"]
+                                : Application.Current.Resources["ReceivedMessageBubbleColor"];
+                        }
+                        catch
+                        {
+                            // اگر رنگ‌ها در منابع پیدا نشد، رنگ‌های پیش‌فرض
+                            return isOwnMessage ? Colors.LightBlue : Colors.LightGray;
+                        }
                     }
-                    catch
+                    else if (paramStr == "TextColor" && typeof(Color).IsAssignableFrom(targetType))
                     {
-                        // Fallback colors if resources not found
-                        return isOwnMessage ? Colors.LightBlue : Colors.LightGray;
+                        try
+                        {
+                            // برای رنگ متن پیام
+                            return isOwnMessage
+                                ? Application.Current.Resources["SentMessageTextColor"]
+                                : Application.Current.Resources["ReceivedMessageTextColor"];
+                        }
+                        catch
+                        {
+                            // رنگ‌های پیش‌فرض
+                            return isOwnMessage ? Colors.Black : Colors.Black;
+                        }
                     }
                 }
 
-                // For text color conversions
-                if (parameter != null && parameter.ToString() == "TextColor" &&
-                    typeof(Color).IsAssignableFrom(targetType))
-                {
-                    try
-                    {
-                        return isOwnMessage
-                            ? Application.Current.Resources["SentMessageTextColor"]
-                            : Application.Current.Resources["ReceivedMessageTextColor"];
-                    }
-                    catch
-                    {
-                        // Fallback colors if resources not found
-                        return isOwnMessage ? Colors.Black : Colors.Black;
-                    }
-                }
-
-                // For layout options
+                // برای LayoutOptions
                 if (targetType == typeof(LayoutOptions))
                 {
                     return isOwnMessage ? LayoutOptions.End : LayoutOptions.Start;
                 }
             }
 
-            // Default fallbacks based on target type
+            // مقادیر پیش‌فرض
             if (typeof(Color).IsAssignableFrom(targetType))
             {
                 return Colors.Gray;

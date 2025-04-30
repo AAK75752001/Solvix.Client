@@ -320,7 +320,7 @@ namespace Solvix.Client.MVVM.ViewModels
 
             try
             {
-                // Add timestamp to force new instance creation
+                // اضافه کردن timestamp به عنوان پارامتر ناوبری برای جلوگیری از تشخیص مسیر تکراری
                 var navigationParameter = new Dictionary<string, object>
         {
             { "ChatId", chat.Id.ToString() },

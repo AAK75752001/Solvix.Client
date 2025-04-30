@@ -13,13 +13,13 @@ namespace Solvix.Client
             Routing.RegisterRoute(nameof(RegisterPage), typeof(RegisterPage));
             Routing.RegisterRoute(nameof(MainPage), typeof(MainPage));
 
-            // مهم: از ShellContent به جای ContentPage استفاده کنید
+            // مهم: ثبت ChatPage به عنوان یک مسیر جداگانه
             Routing.RegisterRoute(nameof(ChatPage), typeof(ChatPage));
 
             Routing.RegisterRoute(nameof(NewChatPage), typeof(NewChatPage));
             Routing.RegisterRoute(nameof(SettingsPage), typeof(SettingsPage));
 
-            // اضافه کردن حالت مورد نیاز برای پشته ناوبری
+            // تنظیمات Shell
             Shell.SetTabBarIsVisible(this, false);
             Shell.SetNavBarIsVisible(this, false);
         }
