@@ -344,14 +344,14 @@ namespace Solvix.Client.MVVM.ViewModels
                 return;
 
             string messageText = MessageText.Trim();
-            MessageText = string.Empty; // خالی کردن فیلد پیام
+            MessageText = string.Empty;
 
             try
             {
                 IsSending = true;
                 _logger.LogInformation("Sending message to chat {ChatId}: {MessageText}", chatGuid, messageText);
 
-                // ایجاد یک پیام موقت با ID منفی منحصر به فرد
+                // ایجاد پیام موقت
                 var tempId = -DateTime.Now.Millisecond - 1000 * new Random().Next(1000, 9999);
                 var tempMessage = new MessageModel
                 {
@@ -366,39 +366,35 @@ namespace Solvix.Client.MVVM.ViewModels
                     IsOwnMessage = true
                 };
 
-                // افزودن پیام به کالکشن
-                Messages.Add(tempMessage);
-                _pendingMessages[tempId] = tempMessage;
-                NoMessages = false;
+                // کلید مشکل: پیام را بدون بازسازی کل کالکشن اضافه کنید
+                await MainThread.InvokeOnMainThreadAsync(() => {
+                    // اضافه کردن پیام به کالکشن فعلی بدون ایجاد کالکشن جدید
+                    Messages.Add(tempMessage);
+                    NoMessages = false;
+                });
 
-                // ارسال پیام از طریق API/SignalR
+                // ارسال پیام توسط API
                 MessageModel serverMessage = await _chatService.SendMessageAsync(chatGuid, messageText);
 
-                // یافتن پیام موقت در کالکشن
-                var pendingMessage = Messages.FirstOrDefault(m => m.Id == tempId);
-                if (pendingMessage != null)
-                {
-                    if (serverMessage != null)
+                // یافتن پیام در کالکشن و به‌روزرسانی آن
+                await MainThread.InvokeOnMainThreadAsync(() => {
+                    // یافتن پیام موقت در کالکشن
+                    var pendingMessage = Messages.FirstOrDefault(m => m.Id == tempId);
+                    if (pendingMessage != null)
                     {
-                        // به‌روزرسانی ویژگی‌های پیام - این فراخوانی‌ها PropertyChanged را فعال می‌کنند
-                        pendingMessage.Id = serverMessage.Id;
-                        pendingMessage.Status = Constants.MessageStatus.Sent;
-                        pendingMessage.SentAt = serverMessage.SentAt.ToLocalTime();
-                        pendingMessage.SentAtFormatted = FormatTimeDisplay(serverMessage.SentAt.ToLocalTime());
-                        pendingMessage.SenderName = serverMessage.SenderName;
-
-                        _logger.LogInformation("Temporary message updated with server ID {MessageId}", serverMessage.Id);
+                        if (serverMessage != null)
+                        {
+                            // به‌روزرسانی ویژگی‌های پیام - این باعث فعال‌سازی PropertyChanged می‌شود
+                            pendingMessage.Id = serverMessage.Id;
+                            pendingMessage.Status = Constants.MessageStatus.Sent;
+                        }
+                        else
+                        {
+                            // علامت‌گذاری به عنوان خطا
+                            pendingMessage.Status = Constants.MessageStatus.Failed;
+                        }
                     }
-                    else
-                    {
-                        // علامت‌گذاری به عنوان خطا
-                        pendingMessage.Status = Constants.MessageStatus.Failed;
-                        _logger.LogWarning("Message {TempId} marked as failed", tempId);
-                    }
-                }
-
-                // حذف از دیکشنری پیگیری
-                _pendingMessages.Remove(tempId);
+                });
             }
             catch (Exception ex)
             {
@@ -460,52 +456,26 @@ namespace Solvix.Client.MVVM.ViewModels
                 {
                     _logger.LogInformation("Received message {MessageId} for chat {ChatId}", message.Id, message.ChatId);
 
+                    // تعیین اینکه آیا پیام متعلق به خود کاربر است یا خیر
                     message.IsOwnMessage = message.SenderId == _currentUserId;
 
-                    // بررسی دقیق‌تر برای تشخیص پیام‌های تکراری
+                    // این بخش کلیدی است - بررسی بسیار دقیق برای تشخیص پیام‌های تکراری
                     var existingMessage = Messages.FirstOrDefault(m =>
-                        // تطابق با ID دقیق
+                        // بررسی بر اساس ID
                         (m.Id > 0 && m.Id == message.Id) ||
-                        // تطابق با محتوا و زمان برای پیام‌های با ID منفی (موقت)
-                        (m.Id < 0 && message.Content == m.Content &&
-                         Math.Abs((message.SentAt - m.SentAt).TotalSeconds) < 20));
+                        // بررسی برای پیام‌های با ID منفی (موقت) بر اساس محتوا و زمان
+                        (m.Id < 0 && m.Content == message.Content &&
+                        Math.Abs((m.SentAt - message.SentAt).TotalSeconds) < 60));
 
                     if (existingMessage != null)
                     {
-                        // این پیام قبلاً موجود است - فقط وضعیت را به‌روز کنید
-                        _logger.LogInformation("Message already exists, updating status only");
-
-                        // به‌روزرسانی ID اگر لازم باشد
-                        if (existingMessage.Id < 0 && message.Id > 0)
-                        {
-                            existingMessage.Id = message.Id;
-                        }
-
-                        // به‌روزرسانی وضعیت
-                        existingMessage.Status = message.Status;
-                        existingMessage.IsRead = message.IsRead;
-                        existingMessage.ReadAt = message.ReadAt;
-
-                        // PropertyChanged به طور خودکار اجرا می‌شود
-                        return;
+                        _logger.LogInformation("Duplicate message detected, not adding to collection");
+                        return; // اضافه نکردن پیام تکراری
                     }
 
-                    // اگر پیام جدید است، به کالکشن اضافه کنید
-                    if (string.IsNullOrEmpty(message.SentAtFormatted))
-                    {
-                        message.SentAtFormatted = FormatTimeDisplay(message.SentAt);
-                    }
-
+                    // فقط اگر پیام تکراری نیست، آن را اضافه کنید
                     Messages.Add(message);
                     NoMessages = false;
-
-                    // اگر پیام دریافتی است، آن را خوانده شده علامت‌گذاری کنید
-                    if (!message.IsOwnMessage)
-                    {
-                        message.IsRead = true;
-                        message.ReadAt = DateTime.UtcNow;
-                        MarkMessageAsReadAsync(message.Id).ConfigureAwait(false);
-                    }
                 }
                 catch (Exception ex)
                 {
