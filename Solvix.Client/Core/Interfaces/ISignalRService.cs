@@ -11,7 +11,8 @@ namespace Solvix.Client.Core.Interfaces
         Task MarkMessagesAsReadAsync(List<int> messageIds);
         Task ClearMessageTrackingAsync();
         void SetShowConnectionErrors(bool show);
-
+        Task HandleAppSleepAsync();
+        Task HandleAppResumeAsync();
 
         event Action<MessageModel> OnMessageReceived;
         event Action<Guid, int> OnMessageRead;

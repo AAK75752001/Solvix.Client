@@ -78,9 +78,16 @@ namespace Solvix.Client.Core.Models
             set => _editedAt = value;
         }
 
-        // Local properties for UI
+        // خصوصیت‌های محلی برای رابط کاربری
         [JsonIgnore]
-        public DateTime LocalSentAt => SentAt.ToLocalTime();
+        public DateTime LocalSentAt
+        {
+            get
+            {
+                // تبدیل زمان سرور به زمان محلی برای نمایش دقیق
+                return SentAt.Kind == DateTimeKind.Utc ? SentAt.ToLocalTime() : SentAt;
+            }
+        }
 
         [JsonIgnore]
         public int Status
@@ -92,7 +99,13 @@ namespace Solvix.Client.Core.Models
         [JsonIgnore]
         public string SentAtFormatted
         {
-            get => string.IsNullOrEmpty(_sentAtFormatted) ? FormatTimeText() : _sentAtFormatted;
+            get
+            {
+                if (!string.IsNullOrEmpty(_sentAtFormatted))
+                    return _sentAtFormatted;
+
+                return FormatMessageTime();
+            }
             set => _sentAtFormatted = value;
         }
 
@@ -116,72 +129,9 @@ namespace Solvix.Client.Core.Models
                 if (_isOwnMessage.HasValue)
                     return _isOwnMessage.Value;
 
-                try
-                {
-                    // Attempt to get from static storage first for performance
-                    var currentUserIdTask = SecureStorage.GetAsync(Constants.StorageKeys.UserId);
-
-                    // Check if the task completed synchronously
-                    if (currentUserIdTask.IsCompleted)
-                    {
-                        var currentUserId = currentUserIdTask.Result;
-                        _isOwnMessage = !string.IsNullOrEmpty(currentUserId) &&
-                                       long.TryParse(currentUserId, out var userId) &&
-                                       userId == SenderId;
-                        return _isOwnMessage.Value;
-                    }
-
-                    // Use a non-blocking approach with a short timeout
-                    var timeoutTask = Task.Delay(100); // Very short timeout to prevent UI delays
-
-                    // Use WhenAny to avoid blocking the thread
-                    if (Task.WhenAny(currentUserIdTask, timeoutTask).Result == currentUserIdTask)
-                    {
-                        var currentUserId = currentUserIdTask.Result;
-                        _isOwnMessage = !string.IsNullOrEmpty(currentUserId) &&
-                                       long.TryParse(currentUserId, out var userId) &&
-                                       userId == SenderId;
-                        return _isOwnMessage.Value;
-                    }
-
-                    // If we couldn't get the user ID quickly, default to false
-                    // The UI will update later when the correct value is determined
-                    return false;
-                }
-                catch
-                {
-                    // In case of any error, default to false
-                    return false;
-                }
+                return false; // مقدار پیش‌فرض اگر تنظیم نشده باشد
             }
             set => _isOwnMessage = value;
-        }
-
-        [JsonIgnore]
-        public string TimeText
-        {
-            get
-            {
-                if (!string.IsNullOrEmpty(SentAtFormatted))
-                    return SentAtFormatted;
-
-                return FormatTimeText();
-            }
-        }
-
-        private string FormatTimeText()
-        {
-            try
-            {
-                // Convert server time to local time
-                var localTime = LocalSentAt;
-                return localTime.ToString("HH:mm");
-            }
-            catch
-            {
-                // In case of error, use simple format
-                return SentAt.ToString("HH:mm");
-            }
         }
 
         [JsonIgnore]
@@ -209,17 +159,34 @@ namespace Solvix.Client.Core.Models
             }
         }
 
-        // Generate a unique signature for message deduplication
+        private string FormatMessageTime()
+        {
+            try
+            {
+                // تبدیل زمان سرور به زمان محلی
+                var localTime = LocalSentAt;
+
+                // فقط نمایش ساعت و دقیقه
+                return localTime.ToString("HH:mm");
+            }
+            catch
+            {
+                // در صورت بروز خطا، از قالب ساده استفاده کنید
+                return SentAt.ToString("HH:mm");
+            }
+        }
+
+        // ایجاد امضای منحصر به فرد برای جلوگیری از تکرار پیام
         [JsonIgnore]
         public string Signature => $"{SenderId}:{Content.GetHashCode()}:{SentAt.Ticks}";
 
-        // Override Equals and GetHashCode for better comparison
+        // بازنویسی Equals و GetHashCode برای مقایسه بهتر
         public override bool Equals(object obj)
         {
             if (obj is MessageModel other)
             {
-                // Consider messages equal if they have the same ID (if ID > 0)
-                // or if they have the same signature for temporary messages
+                // پیام‌ها را برابر در نظر بگیرید اگر همان شناسه را داشته باشند (اگر شناسه > 0)
+                // یا اگر امضای یکسانی برای پیام‌های موقت داشته باشند
                 if (Id > 0 && other.Id > 0)
                     return Id == other.Id;
 
@@ -232,17 +199,11 @@ namespace Solvix.Client.Core.Models
 
         public override int GetHashCode()
         {
-            // Use ID for permanent messages, signature for temporary ones
+            // از شناسه برای پیام‌های دائمی، از امضا برای موقت‌ها
             if (Id > 0)
                 return Id.GetHashCode();
 
             return Signature.GetHashCode();
         }
-    }
-
-    public class SendMessageDto
-    {
-        public Guid ChatId { get; set; }
-        public string Content { get; set; } = string.Empty;
     }
 }

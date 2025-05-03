@@ -561,5 +561,35 @@ namespace Solvix.Client.Core.Services
                 _messageProcessingLock.Release();
             }
         }
+
+
+        public async Task HandleAppSleepAsync()
+        {
+            try
+            {
+                _logger.LogInformation("App going to sleep, disconnecting SignalR");
+                await DisconnectAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error handling app sleep");
+            }
+        }
+
+        public async Task HandleAppResumeAsync()
+        {
+            try
+            {
+                _logger.LogInformation("App resuming, reconnecting SignalR if needed");
+                if (_hubConnection.State != HubConnectionState.Connected && _connectivityService.IsConnected)
+                {
+                    await ConnectAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error handling app resume");
+            }
+        }
     }
 }

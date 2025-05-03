@@ -1,7 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 using Solvix.Client.Core;
 using Solvix.Client.Core.Interfaces;
-using Solvix.Client.MVVM.ViewModels;
 using Solvix.Client.MVVM.Views;
 using Solvix.Client.Resources.Themes;
 
@@ -33,7 +32,7 @@ namespace Solvix.Client
                 _settingsService = settingsService;
                 _serviceProvider = serviceProvider;
 
-                // Show a loading page immediately
+                // صفحه بارگذاری را بلافاصله نمایش دهید
                 MainPage = new ContentPage
                 {
                     BackgroundColor = Colors.White,
@@ -46,17 +45,14 @@ namespace Solvix.Client
                     }
                 };
 
-                // Load theme and proceed with initialization
+                // اعمال قالب
                 ApplyTheme();
-
-                // Start initialization without waiting
-                Task.Run(async () => await InitializeAppAsync());
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Critical error in App constructor");
 
-                // Fallback UI in case of critical error
+                // رابط کاربری پشتیبان در صورت بروز خطای اساسی
                 MainPage = new ContentPage
                 {
                     BackgroundColor = Colors.White,
@@ -85,59 +81,13 @@ namespace Solvix.Client
             }
         }
 
-        private async Task InitializeAppAsync()
+        protected override void OnStart()
         {
-            // Prevent multiple initializations
-            if (_isInitializing)
-            {
-                _logger.LogWarning("App initialization already in progress");
-                return;
-            }
+            base.OnStart();
+            _logger.LogInformation("App OnStart");
 
-            await _initLock.WaitAsync();
-
-            try
-            {
-                _isInitializing = true;
-                SetInitialPage();
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error during app initialization");
-
-                // Show error on main page if initialization fails
-                await MainThread.InvokeOnMainThreadAsync(() => {
-                    MainPage = new ContentPage
-                    {
-                        Content = new VerticalStackLayout
-                        {
-                            VerticalOptions = LayoutOptions.Center,
-                            HorizontalOptions = LayoutOptions.Center,
-                            Children =
-                            {
-                                new Label
-                                {
-                                    Text = "Failed to initialize application",
-                                    FontSize = 18,
-                                    HorizontalOptions = LayoutOptions.Center
-                                },
-                                new Label
-                                {
-                                    Text = ex.Message,
-                                    FontSize = 14,
-                                    HorizontalOptions = LayoutOptions.Center,
-                                    Margin = new Thickness(20, 10, 20, 0)
-                                }
-                            }
-                        }
-                    };
-                });
-            }
-            finally
-            {
-                _isInitializing = false;
-                _initLock.Release();
-            }
+            // برنامه اصلی برای راه‌اندازی - در رشته رابط کاربری اجرا می‌شود
+            SetInitialPage();
         }
 
         private void SetInitialPage()
@@ -158,80 +108,70 @@ namespace Solvix.Client
                     isLoggedIn = false;
                 }
 
-                MainThread.InvokeOnMainThreadAsync(() => {
-                    if (isLoggedIn)
-                    {
-                        _logger.LogInformation("User is logged in, navigating to main app");
-                        MainPage = new AppShell();
-                    }
-                    else
-                    {
-                        _logger.LogInformation("User is not logged in, navigating to login");
+                if (isLoggedIn)
+                {
+                    _logger.LogInformation("User is logged in, navigating to main app");
+                    MainPage = new AppShell();
+                }
+                else
+                {
+                    _logger.LogInformation("User is not logged in, navigating to login");
 
-                        try
+                    try
+                    {
+                        var loginPage = _serviceProvider.GetService<LoginPage>();
+                        if (loginPage != null)
                         {
-                            var loginPage = _serviceProvider.GetService<LoginPage>();
-                            if (loginPage != null)
-                            {
-                                MainPage = new NavigationPage(loginPage);
-                            }
-                            else
-                            {
-                                _logger.LogError("Failed to resolve LoginPage from service provider");
-
-                                // Create a simple error page instead of trying direct instantiation
-                                MainPage = new ContentPage
-                                {
-                                    Content = new Label
-                                    {
-                                        Text = "Error: Could not create login page",
-                                        HorizontalOptions = LayoutOptions.Center,
-                                        VerticalOptions = LayoutOptions.Center
-                                    }
-                                };
-                            }
+                            MainPage = new NavigationPage(loginPage);
                         }
-                        catch (Exception ex)
+                        else
                         {
-                            _logger.LogError(ex, "Error creating login page");
+                            _logger.LogError("Failed to resolve LoginPage from service provider");
 
-                            // Last resort - create a simple error page
+                            // صفحه خطای ساده به جای تلاش برای ایجاد مستقیم صفحه
                             MainPage = new ContentPage
                             {
                                 Content = new Label
                                 {
-                                    Text = "Error loading login page: " + ex.Message,
+                                    Text = "Error: Could not create login page",
                                     HorizontalOptions = LayoutOptions.Center,
                                     VerticalOptions = LayoutOptions.Center
                                 }
                             };
                         }
                     }
-                });
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error creating login page");
+
+                        // آخرین راه‌حل - ایجاد یک صفحه خطای ساده
+                        MainPage = new ContentPage
+                        {
+                            Content = new Label
+                            {
+                                Text = "Error loading login page: " + ex.Message,
+                                HorizontalOptions = LayoutOptions.Center,
+                                VerticalOptions = LayoutOptions.Center
+                            }
+                        };
+                    }
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Critical error setting initial page");
 
-                // Fallback UI
-                MainThread.InvokeOnMainThreadAsync(() => {
-                    MainPage = new ContentPage
+                // رابط کاربری پشتیبان
+                MainPage = new ContentPage
+                {
+                    Content = new Label
                     {
-                        Content = new Label
-                        {
-                            Text = "Error starting application: " + ex.Message,
-                            HorizontalOptions = LayoutOptions.Center,
-                            VerticalOptions = LayoutOptions.Center
-                        }
-                    };
-                });
+                        Text = "Error starting application: " + ex.Message,
+                        HorizontalOptions = LayoutOptions.Center,
+                        VerticalOptions = LayoutOptions.Center
+                    }
+                };
             }
-        }
-
-        protected override void OnStart()
-        {
-            _logger.LogInformation("App OnStart");
-            base.OnStart();
         }
 
         protected override void OnSleep()
@@ -253,17 +193,17 @@ namespace Solvix.Client
                 var theme = _settingsService.GetTheme();
                 _logger.LogInformation("Applying theme: {Theme}", theme);
 
-                // Get the currently merged theme dictionaries (if any)
+                // دریافت دیکشنری‌های قالب ادغام‌شده فعلی (اگر وجود دارد)
                 var themeDict = Application.Current.Resources.MergedDictionaries
                     .FirstOrDefault(d => d is LightThemeResources || d is DarkThemeResources);
 
-                // Remove old theme dictionary if found
+                // حذف دیکشنری قالب قدیمی در صورت یافتن
                 if (themeDict != null)
                 {
                     Application.Current.Resources.MergedDictionaries.Remove(themeDict);
                 }
 
-                // Add new theme dictionary
+                // افزودن دیکشنری قالب جدید
                 if (string.IsNullOrEmpty(theme) || theme == Constants.Themes.Light)
                 {
                     _logger.LogInformation("Adding Light theme resources");
@@ -279,7 +219,7 @@ namespace Solvix.Client
             {
                 _logger.LogError(ex, "Error applying theme");
 
-                // Fallback to light theme in case of error
+                // بازگشت به قالب روشن در صورت بروز خطا
                 try
                 {
                     Application.Current.Resources.MergedDictionaries.Add(new LightThemeResources());

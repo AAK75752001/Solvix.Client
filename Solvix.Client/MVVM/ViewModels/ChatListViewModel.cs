@@ -248,27 +248,27 @@ namespace Solvix.Client.MVVM.ViewModels
                 {
                     foreach (var participant in chat.Participants)
                     {
-                        // Skip current user - they're always "online" from their perspective
+                        // فقط کاربر فعلی همیشه آنلاین است
                         if (participant.Id == await _chatService.GetCurrentUserIdAsync())
-                            continue;
-
-                        // Only update if we have a status for this user
-                        if (_userOnlineStatus.TryGetValue(participant.Id, out bool isOnline))
+                        {
+                            participant.IsOnline = true;
+                            participant.LastActive = DateTime.UtcNow;
+                            updatedAny = true;
+                        }
+                        // برای سایر کاربران، وضعیت واقعی را حفظ کن
+                        else if (_userOnlineStatus.TryGetValue(participant.Id, out bool isOnline))
                         {
                             if (participant.IsOnline != isOnline)
                             {
                                 participant.IsOnline = isOnline;
                                 updatedAny = true;
-
-                                _logger.LogDebug("Updated online status for user {UserId} to {IsOnline}",
-                                    participant.Id, isOnline);
                             }
                         }
                     }
                 }
             }
 
-            // If we updated any status, refresh the UI
+            // اگر وضعیتی به‌روزرسانی شده، رابط کاربری را به‌روزرسانی کنیم
             if (updatedAny)
             {
                 await MainThread.InvokeOnMainThreadAsync(() =>
@@ -410,38 +410,36 @@ namespace Solvix.Client.MVVM.ViewModels
             {
                 try
                 {
-                    _logger.LogInformation("User status changed: User {UserId}, Online: {IsOnline}",
-                        userId, isOnline);
+                    _logger.LogInformation("وضعیت کاربر {UserId} تغییر کرد: آنلاین = {IsOnline}, آخرین فعالیت = {LastActive}",
+                        userId, isOnline, lastActive);
 
-                    // Update status in cache
-                    _userOnlineStatus[userId] = isOnline;
-
-                    // Find chats with this user
+                    // یافتن چت‌های مرتبط با این کاربر
                     var affectedChats = Chats.Where(c =>
                         c.Participants.Any(p => p.Id == userId)
                     ).ToList();
 
                     if (affectedChats.Any())
                     {
-                        // Update each chat with this user
+                        // به‌روزرسانی وضعیت کاربر در هر چت
                         foreach (var chat in affectedChats)
                         {
                             var participant = chat.Participants.FirstOrDefault(p => p.Id == userId);
                             if (participant != null)
                             {
+                                // وضعیت واقعی را نمایش بده
                                 participant.IsOnline = isOnline;
                                 participant.LastActive = lastActive;
                             }
                         }
 
-                        // Refresh UI
+                        // به‌روزرسانی رابط کاربری
                         OnPropertyChanged(nameof(Chats));
                         OnPropertyChanged(nameof(FilteredChats));
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error updating user status");
+                    _logger.LogError(ex, "خطا در به‌روزرسانی وضعیت کاربر");
                 }
             });
         }

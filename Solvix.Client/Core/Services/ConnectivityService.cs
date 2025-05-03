@@ -1,11 +1,13 @@
-﻿using Microsoft.Extensions.Logging;
+﻿// Improved ConnectivityService with better error handling
+using Microsoft.Extensions.Logging;
 using Solvix.Client.Core.Interfaces;
 
 namespace Solvix.Client.Core.Services
 {
-    public class ConnectivityService : IConnectivityService
+    public class ConnectivityService : IConnectivityService, IDisposable
     {
         private readonly ILogger<ConnectivityService> _logger;
+        private bool _isDisposed = false;
 
         // For development purposes, override connectivity state
         // This will ensure the app attempts to connect even if connectivity check fails
@@ -15,18 +17,26 @@ namespace Solvix.Client.Core.Services
         {
             get
             {
-                var networkStatus = Connectivity.NetworkAccess == NetworkAccess.Internet;
-
-                // In debug mode, we can override connectivity check
-#if DEBUG
-                if (_forceConnected)
+                try
                 {
-                    _logger.LogInformation("Forcing connectivity to true for development");
-                    return true;
-                }
+                    var networkStatus = Connectivity.NetworkAccess == NetworkAccess.Internet;
+
+                    // In debug mode, we can override connectivity check
+#if DEBUG
+                    if (_forceConnected)
+                    {
+                        _logger.LogInformation("Forcing connectivity to true for development");
+                        return true;
+                    }
 #endif
 
-                return networkStatus;
+                    return networkStatus;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error checking network connectivity");
+                    return _forceConnected; // Use forced value as fallback
+                }
             }
         }
 
@@ -72,6 +82,33 @@ namespace Solvix.Client.Core.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in ConnectivityChanged event handler");
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_isDisposed)
+            {
+                if (disposing)
+                {
+                    try
+                    {
+                        // Unsubscribe from events
+                        Connectivity.ConnectivityChanged -= OnConnectivityChanged;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error disposing ConnectivityService");
+                    }
+                }
+
+                _isDisposed = true;
             }
         }
     }
