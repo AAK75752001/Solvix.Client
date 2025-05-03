@@ -26,7 +26,7 @@ namespace Solvix.Client.MVVM.ViewModels
         private bool _isSending;
         private bool _noMessages = false;
         private long _currentUserId = 0;
-        private ObservableCollection<MessageModel> _messages = new();
+        private ObservableCollection<MessageModel> _messages = new ObservableCollection<MessageModel>();
         private bool _isInitialized = false;
         private bool _isLoadingMore;
         private int _messagesSkip = 0;
@@ -115,7 +115,14 @@ namespace Solvix.Client.MVVM.ViewModels
                         _messages.CollectionChanged -= Messages_CollectionChanged;
                     }
 
-                    _messages = value;
+                    _messages.Clear();
+                    if (value != null)
+                    {
+                        foreach (var item in value)
+                        {
+                            _messages.Add(item);
+                        }
+                    }
 
                     if (_messages != null)
                     {
@@ -343,46 +350,71 @@ namespace Solvix.Client.MVVM.ViewModels
                 // به‌روزرسانی UI در رشته اصلی
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
-                    // تنظیم چت
-                    Chat = chat;
-
-                    // اگر پیام‌ها بارگذاری شدند
-                    if (messages != null && messages.Count > 0)
+                    try
                     {
-                        // علامت‌گذاری پیام‌ها به عنوان پیام‌های خود یا دیگران
-                        foreach (var message in messages)
-                        {
-                            message.IsOwnMessage = message.SenderId == _currentUserId;
+                        // تنظیم چت
+                        Chat = chat;
 
-                            // قالب‌بندی زمان اگر هنوز تنظیم نشده
-                            if (string.IsNullOrEmpty(message.SentAtFormatted))
+                        // اگر پیام‌ها بارگذاری شدند
+                        if (messages != null && messages.Count > 0)
+                        {
+                            // علامت‌گذاری پیام‌ها به عنوان پیام‌های خود یا دیگران
+                            foreach (var message in messages)
                             {
-                                message.SentAtFormatted = FormatTimeDisplay(message.SentAt);
+                                message.IsOwnMessage = message.SenderId == _currentUserId;
+
+                                // قالب‌بندی زمان اگر هنوز تنظیم نشده
+                                if (string.IsNullOrEmpty(message.SentAtFormatted))
+                                {
+                                    message.SentAtFormatted = FormatTimeDisplay(message.SentAt);
+                                }
+                            }
+
+                            // مرتب‌سازی بر اساس زمان ارسال
+                            var sortedMessages = messages.OrderBy(m => m.SentAt).ToList();
+
+                            // اگر بار اول است، لیست موجود را پاک کنید
+                            if (_isFirstLoad)
+                            {
+                                // ابتدا پاک کنید
+                                var cachedMessages = new List<MessageModel>(Messages);
+                                Messages.Clear();
+
+                                // سپس همه را اضافه کنید
+                                foreach (var message in sortedMessages)
+                                {
+                                    Messages.Add(message);
+                                }
+
+                                _isFirstLoad = false;
+                            }
+                            else
+                            {
+                                // اضافه کردن پیام‌های جدید فقط (اگر از قبل وجود ندارند)
+                                var existingIds = Messages.Select(m => m.Id).ToHashSet();
+                                foreach (var message in sortedMessages)
+                                {
+                                    if (!existingIds.Contains(message.Id))
+                                    {
+                                        Messages.Add(message);
+                                    }
+                                }
                             }
                         }
-
-                        // مرتب‌سازی بر اساس زمان ارسال و به‌روزرسانی کالکشن
-                        var sortedMessages = messages.OrderBy(m => m.SentAt).ToList();
-                        if (_isFirstLoad)
+                        else if (messages != null && messages.Count == 0 && _isFirstLoad)
                         {
-                            // فقط برای بار اول کل کالکشن را جایگزین می‌کنیم
                             Messages.Clear();
-                            foreach (var message in sortedMessages)
-                            {
-                                Messages.Add(message);
-                            }
+                            NoMessages = true;
                             _isFirstLoad = false;
                         }
-                    }
-                    else if (messages != null && messages.Count == 0 && _isFirstLoad)
-                    {
-                        Messages.Clear();
-                        NoMessages = true;
-                        _isFirstLoad = false;
-                    }
 
-                    // پایان بارگذاری
-                    IsLoading = false;
+                        // پایان بارگذاری
+                        IsLoading = false;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error updating UI in LoadChatAsync");
+                    }
                 });
 
                 // علامت‌گذاری پیام‌های خوانده نشده به عنوان خوانده شده
@@ -481,51 +513,66 @@ namespace Solvix.Client.MVVM.ViewModels
                 _pendingMessagesById[tempId] = correlationId;
                 _pendingMessagesByCorrelation[correlationId] = tempId;
 
-                // اضافه کردن پیام به کالکشن
+                // از dispatcher استفاده کنید و همیشه یک try-catch در آن قرار دهید
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
-                    Messages.Add(tempMessage);
-                    NoMessages = false;
+                    try
+                    {
+                        // پیام موقت را به کالکشن موجود اضافه کنید
+                        Messages.Add(tempMessage);
+                        NoMessages = false;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error adding temp message to Messages collection");
+                    }
                 });
 
                 // ارسال پیام به سرور با شناسه همبستگی
                 var serverMessage = await _chatService.SendMessageWithCorrelationAsync(chatGuid, messageText, correlationId);
 
-                // به‌روزرسانی پیام موقت با پاسخ سرور
+                // به‌روزرسانی پیام موقت با پاسخ سرور - بدون جایگزینی کالکشن
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
-                    // یافتن پیام موقت در کالکشن
-                    var tempMessage = Messages.FirstOrDefault(m => m.Id == tempId);
-                    if (tempMessage != null)
+                    try
                     {
-                        if (serverMessage != null)
+                        // یافتن پیام موقت در کالکشن
+                        var tempMessage = Messages.FirstOrDefault(m => m.Id == tempId);
+                        if (tempMessage != null)
                         {
-                            // به جای جایگزینی، خصوصیت‌های پیام را به‌روزرسانی می‌کنیم
-                            tempMessage.Id = serverMessage.Id;
-                            tempMessage.Status = Constants.MessageStatus.Sent;
+                            if (serverMessage != null)
+                            {
+                                // به‌روزرسانی پیام موقت با داده‌های سرور
+                                tempMessage.Id = serverMessage.Id;
+                                tempMessage.Status = Constants.MessageStatus.Sent;
 
-                            // اعلان تغییر خصوصیت برای به‌روزرسانی UI
-                            tempMessage.OnPropertyChanged(nameof(MessageModel.Id));
-                            tempMessage.OnPropertyChanged(nameof(MessageModel.Status));
+                                // اعلان تغییر خصوصیت برای به‌روزرسانی UI
+                                tempMessage.OnPropertyChanged(nameof(MessageModel.Id));
+                                tempMessage.OnPropertyChanged(nameof(MessageModel.Status));
 
-                            // به‌روزرسانی نگاشت‌ها
-                            _pendingMessagesById.TryRemove(tempId, out _);
-                            _pendingMessagesByCorrelation[correlationId] = serverMessage.Id;
+                                // به‌روزرسانی نگاشت‌ها
+                                _pendingMessagesById.TryRemove(tempId, out _);
+                                _pendingMessagesByCorrelation[correlationId] = serverMessage.Id;
 
-                            _logger.LogInformation("Updated message from temp ID {TempId} to server ID {ServerId}", tempId, serverMessage.Id);
+                                _logger.LogInformation("Updated message from temp ID {TempId} to server ID {ServerId}", tempId, serverMessage.Id);
+                            }
+                            else
+                            {
+                                // علامت‌گذاری به عنوان ناموفق
+                                tempMessage.Status = Constants.MessageStatus.Failed;
+                                tempMessage.OnPropertyChanged(nameof(MessageModel.Status));
+
+                                // پاک کردن از نگاشت‌ها
+                                _pendingMessagesById.TryRemove(tempId, out _);
+                                _pendingMessagesByCorrelation.TryRemove(correlationId, out _);
+
+                                _logger.LogWarning("Message sending failed, marked as failed");
+                            }
                         }
-                        else
-                        {
-                            // علامت‌گذاری به عنوان ناموفق
-                            tempMessage.Status = Constants.MessageStatus.Failed;
-                            tempMessage.OnPropertyChanged(nameof(MessageModel.Status));
-
-                            // پاک کردن از نگاشت‌ها
-                            _pendingMessagesById.TryRemove(tempId, out _);
-                            _pendingMessagesByCorrelation.TryRemove(correlationId, out _);
-
-                            _logger.LogWarning("Message sending failed, marked as failed");
-                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error updating temp message with server response");
                     }
                 });
             }
@@ -798,32 +845,33 @@ namespace Solvix.Client.MVVM.ViewModels
                     // افزودن به ابتدای لیست - اینها پیام‌های قدیمی‌تر هستند
                     await MainThread.InvokeOnMainThreadAsync(() =>
                     {
-                        // بدست آوردن ID پیام‌های موجود
-                        var existingIds = Messages.Select(m => m.Id).ToHashSet();
-
-                        // مرتب‌سازی پیام‌ها بر اساس زمان
-                        var sortedMessages = messages.OrderBy(m => m.SentAt).ToList();
-
-                        // اضافه کردن پیام‌ها به ابتدای کالکشن موجود
-                        bool addedAny = false;
-                        foreach (var message in sortedMessages)
+                        try
                         {
-                            if (!existingIds.Contains(message.Id))
+                            // بدست آوردن ID پیام‌های موجود
+                            var existingIds = Messages.Select(m => m.Id).ToHashSet();
+
+                            // مرتب‌سازی پیام‌ها بر اساس زمان (قدیمی‌ترین در ابتدا)
+                            var sortedMessages = messages.OrderBy(m => m.SentAt).ToList();
+
+                            // جدیدترین پیام موجود در مجموعه فعلی
+                            var oldestExistingMessage = Messages.FirstOrDefault();
+                            var oldestExistingTime = oldestExistingMessage?.SentAt ?? DateTime.MaxValue;
+
+                            // اضافه کردن پیام‌های جدید به ابتدای کالکشن (به ترتیب)
+                            int insertedCount = 0;
+                            foreach (var message in sortedMessages)
                             {
-                                Messages.Insert(0, message);
-                                addedAny = true;
+                                if (!existingIds.Contains(message.Id) && message.SentAt < oldestExistingTime)
+                                {
+                                    Messages.Insert(insertedCount++, message);
+                                }
                             }
-                        }
 
-                        // لاگ نتایج
-                        if (addedAny)
-                        {
-                            _logger.LogInformation("Added {Count} older messages to the beginning of the collection",
-                                sortedMessages.Count);
+                            _logger.LogInformation("Added {Count} older messages to the collection", insertedCount);
                         }
-                        else
+                        catch (Exception ex)
                         {
-                            _logger.LogInformation("No new messages were added to the collection");
+                            _logger.LogError(ex, "Error updating UI with older messages");
                         }
                     });
                 }

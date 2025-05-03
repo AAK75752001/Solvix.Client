@@ -116,6 +116,7 @@
                RemainingItemsThreshold="20"
                RemainingItemsThresholdReachedCommand="{Binding LoadMoreMessagesCommand}">
 
+            
             <CollectionView.EmptyView>
                 <Grid IsVisible="{Binding IsLoading, Converter={StaticResource InvertedBoolConverter}}">
                     <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center">
