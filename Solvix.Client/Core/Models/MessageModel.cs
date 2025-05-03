@@ -1,8 +1,10 @@
-﻿using System.Text.Json.Serialization;
+﻿using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
 
 namespace Solvix.Client.Core.Models
 {
-    public class MessageModel
+    public class MessageModel : INotifyPropertyChanged
     {
         private int _id;
         private string _content = string.Empty;
@@ -21,61 +23,131 @@ namespace Solvix.Client.Core.Models
         public int Id
         {
             get => _id;
-            set => _id = value;
+            set
+            {
+                if (_id != value)
+                {
+                    _id = value;
+                    OnPropertyChanged();
+                }
+            }
         }
 
         public string Content
         {
             get => _content;
-            set => _content = value ?? string.Empty;
+            set
+            {
+                if (_content != value)
+                {
+                    _content = value ?? string.Empty;
+                    OnPropertyChanged();
+                }
+            }
         }
 
         public DateTime SentAt
         {
             get => _sentAt;
-            set => _sentAt = value;
+            set
+            {
+                if (_sentAt != value)
+                {
+                    _sentAt = value;
+                    OnPropertyChanged();
+                }
+            }
         }
 
         public long SenderId
         {
             get => _senderId;
-            set => _senderId = value;
+            set
+            {
+                if (_senderId != value)
+                {
+                    _senderId = value;
+                    OnPropertyChanged();
+                }
+            }
         }
 
         public string SenderName
         {
             get => _senderName;
-            set => _senderName = value ?? string.Empty;
+            set
+            {
+                if (_senderName != value)
+                {
+                    _senderName = value ?? string.Empty;
+                    OnPropertyChanged();
+                }
+            }
         }
 
         public Guid ChatId
         {
             get => _chatId;
-            set => _chatId = value;
+            set
+            {
+                if (_chatId != value)
+                {
+                    _chatId = value;
+                    OnPropertyChanged();
+                }
+            }
         }
 
         public bool IsRead
         {
             get => _isRead;
-            set => _isRead = value;
+            set
+            {
+                if (_isRead != value)
+                {
+                    _isRead = value;
+                    OnPropertyChanged();
+                }
+            }
         }
 
         public DateTime? ReadAt
         {
             get => _readAt;
-            set => _readAt = value;
+            set
+            {
+                if (_readAt != value)
+                {
+                    _readAt = value;
+                    OnPropertyChanged();
+                }
+            }
         }
 
         public bool IsEdited
         {
             get => _isEdited;
-            set => _isEdited = value;
+            set
+            {
+                if (_isEdited != value)
+                {
+                    _isEdited = value;
+                    OnPropertyChanged();
+                }
+            }
         }
 
         public DateTime? EditedAt
         {
             get => _editedAt;
-            set => _editedAt = value;
+            set
+            {
+                if (_editedAt != value)
+                {
+                    _editedAt = value;
+                    OnPropertyChanged();
+                }
+            }
         }
 
         // خصوصیت‌های محلی برای رابط کاربری
@@ -93,8 +165,20 @@ namespace Solvix.Client.Core.Models
         public int Status
         {
             get => _status;
-            set => _status = value;
-        }
+            set
+            {
+                if (_status != value)
+                {
+                    _status = value;
+                    OnPropertyChanged(nameof(Status));
+                    OnPropertyChanged(nameof(StatusIcon));
+                    OnPropertyChanged(nameof(IsSent));
+                    OnPropertyChanged(nameof(IsDelivered));
+                    OnPropertyChanged(nameof(IsReadByReceiver));
+                    OnPropertyChanged(nameof(IsFailed));
+                }
+            }
+        }        
 
         [JsonIgnore]
         public string SentAtFormatted
@@ -106,9 +190,31 @@ namespace Solvix.Client.Core.Models
 
                 return FormatMessageTime();
             }
-            set => _sentAtFormatted = value;
+            set
+            {
+                if (_sentAtFormatted != value)
+                {
+                    _sentAtFormatted = value;
+                    OnPropertyChanged();
+                }
+            }
         }
 
+        [JsonIgnore]
+        public bool IsOwnMessage
+        {
+            get => _isOwnMessage.GetValueOrDefault();
+            set
+            {
+                if (_isOwnMessage != value)
+                {
+                    _isOwnMessage = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        // سایر خصوصیت‌های محاسباتی بدون تغییر
         [JsonIgnore]
         public bool IsSent => Status >= Constants.MessageStatus.Sent;
 
@@ -120,19 +226,6 @@ namespace Solvix.Client.Core.Models
 
         [JsonIgnore]
         public bool IsFailed => Status == Constants.MessageStatus.Failed;
-
-        [JsonIgnore]
-        public bool IsOwnMessage
-        {
-            get
-            {
-                if (_isOwnMessage.HasValue)
-                    return _isOwnMessage.Value;
-
-                return false; // مقدار پیش‌فرض اگر تنظیم نشده باشد
-            }
-            set => _isOwnMessage = value;
-        }
 
         [JsonIgnore]
         public string StatusIcon
@@ -180,6 +273,14 @@ namespace Solvix.Client.Core.Models
         [JsonIgnore]
         public string Signature => $"{SenderId}:{Content.GetHashCode()}:{SentAt.Ticks}";
 
+        // اضافه کردن کد پشتیبانی از PropertyChanged
+        public event PropertyChangedEventHandler PropertyChanged;
+
+        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
         // بازنویسی Equals و GetHashCode برای مقایسه بهتر
         public override bool Equals(object obj)
         {
@@ -205,5 +306,13 @@ namespace Solvix.Client.Core.Models
 
             return Signature.GetHashCode();
         }
+
+
+        //public event PropertyChangedEventHandler PropertyChanged;
+
+        //protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        //{
+        //    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        //}
     }
 }

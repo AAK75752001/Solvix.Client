@@ -6,6 +6,8 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
+using System.Collections.Specialized;
+using Solvix.Client.Core.Helpers;
 
 namespace Solvix.Client.MVVM.ViewModels
 {
@@ -342,95 +344,66 @@ namespace Solvix.Client.MVVM.ViewModels
                 return;
 
             string messageText = MessageText.Trim();
-
-            // Clear message field immediately for better UX
-            MessageText = string.Empty;
+            MessageText = string.Empty; // خالی کردن فیلد پیام
 
             try
             {
                 IsSending = true;
                 _logger.LogInformation("Sending message to chat {ChatId}: {MessageText}", chatGuid, messageText);
 
-                // Ensure user ID is loaded
-                if (_currentUserId == 0)
-                {
-                    _currentUserId = await GetUserIdAsync();
-                }
-
-                // Create temporary message with unique negative ID
+                // ایجاد یک پیام موقت با ID منفی منحصر به فرد
                 var tempId = -DateTime.Now.Millisecond - 1000 * new Random().Next(1000, 9999);
                 var tempMessage = new MessageModel
                 {
                     Id = tempId,
                     Content = messageText,
-                    SentAt = DateTime.Now, // Local time for immediate display
+                    SentAt = DateTime.Now,
                     ChatId = chatGuid,
-                    SenderId = _currentUserId,
-                    SenderName = "You", // Will be replaced with server response
-                    Status = Constants.MessageStatus.Sending, // Initially shown as sending
+                    SenderId = await GetUserIdAsync(),
+                    SenderName = "You",
+                    Status = Constants.MessageStatus.Sending,
                     SentAtFormatted = DateTime.Now.ToString("HH:mm"),
                     IsOwnMessage = true
                 };
 
-                // Add directly to the existing collection without replacing it
-                await MainThread.InvokeOnMainThreadAsync(() =>
-                {
-                    Messages.Add(tempMessage);
-                    _pendingMessages[tempId] = tempMessage;
-                    NoMessages = false;
-                });
+                // افزودن پیام به کالکشن
+                Messages.Add(tempMessage);
+                _pendingMessages[tempId] = tempMessage;
+                NoMessages = false;
 
-                // Send message via API
+                // ارسال پیام از طریق API/SignalR
                 MessageModel serverMessage = await _chatService.SendMessageAsync(chatGuid, messageText);
 
-                await MainThread.InvokeOnMainThreadAsync(() =>
+                // یافتن پیام موقت در کالکشن
+                var pendingMessage = Messages.FirstOrDefault(m => m.Id == tempId);
+                if (pendingMessage != null)
                 {
-                    // Find our temporary message directly in the collection
-                    var pendingMessage = Messages.FirstOrDefault(m => m.Id == tempId);
-                    if (pendingMessage != null)
+                    if (serverMessage != null)
                     {
-                        int index = Messages.IndexOf(pendingMessage);
-                        if (index >= 0)
-                        {
-                            if (serverMessage != null)
-                            {
-                                // Update properties of the existing message
-                                pendingMessage.Id = serverMessage.Id;
-                                pendingMessage.Status = Constants.MessageStatus.Sent;
-                                pendingMessage.SentAt = serverMessage.SentAt.ToLocalTime();
-                                pendingMessage.SentAtFormatted = FormatTimeDisplay(serverMessage.SentAt.ToLocalTime());
-                                pendingMessage.SenderName = serverMessage.SenderName;
+                        // به‌روزرسانی ویژگی‌های پیام - این فراخوانی‌ها PropertyChanged را فعال می‌کنند
+                        pendingMessage.Id = serverMessage.Id;
+                        pendingMessage.Status = Constants.MessageStatus.Sent;
+                        pendingMessage.SentAt = serverMessage.SentAt.ToLocalTime();
+                        pendingMessage.SentAtFormatted = FormatTimeDisplay(serverMessage.SentAt.ToLocalTime());
+                        pendingMessage.SenderName = serverMessage.SenderName;
 
-                                _logger.LogInformation("Temporary message updated with server ID {MessageId}", serverMessage.Id);
-
-                                // Trigger property change notification for this specific item
-                                // This is the key change - we're updating the existing item without replacing the collection
-                                Messages[index] = pendingMessage;
-                            }
-                            else
-                            {
-                                // Mark as failed
-                                pendingMessage.Status = Constants.MessageStatus.Failed;
-                                Messages[index] = pendingMessage;
-                                _logger.LogWarning("Message {TempId} marked as failed", tempId);
-                            }
-                        }
+                        _logger.LogInformation("Temporary message updated with server ID {MessageId}", serverMessage.Id);
                     }
-
-                    // Remove from tracking dictionary
-                    _pendingMessages.Remove(tempId);
-                });
-
-                if (serverMessage == null)
-                {
-                    _logger.LogWarning("Message sending failed");
-                    await _toastService.ShowToastAsync("Failed to send message", ToastType.Error);
+                    else
+                    {
+                        // علامت‌گذاری به عنوان خطا
+                        pendingMessage.Status = Constants.MessageStatus.Failed;
+                        _logger.LogWarning("Message {TempId} marked as failed", tempId);
+                    }
                 }
+
+                // حذف از دیکشنری پیگیری
+                _pendingMessages.Remove(tempId);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in SendMessageAsync: {Message}", ex.Message);
-                await _toastService.ShowToastAsync($"Error sending message: {ex.Message}", ToastType.Error);
+                await _toastService.ShowToastAsync($"خطا در ارسال پیام: {ex.Message}", ToastType.Error);
             }
             finally
             {
@@ -489,51 +462,49 @@ namespace Solvix.Client.MVVM.ViewModels
 
                     message.IsOwnMessage = message.SenderId == _currentUserId;
 
-                    // Check if this message already exists in our collection (either by ID or by content+time)
+                    // بررسی دقیق‌تر برای تشخیص پیام‌های تکراری
                     var existingMessage = Messages.FirstOrDefault(m =>
+                        // تطابق با ID دقیق
                         (m.Id > 0 && m.Id == message.Id) ||
-                        (m.Id < 0 && m.Content == message.Content &&
-                         Math.Abs((m.SentAt - message.SentAt).TotalMinutes) < 5));
+                        // تطابق با محتوا و زمان برای پیام‌های با ID منفی (موقت)
+                        (m.Id < 0 && message.Content == m.Content &&
+                         Math.Abs((message.SentAt - m.SentAt).TotalSeconds) < 20));
 
                     if (existingMessage != null)
                     {
-                        // This is an update to an existing message - update in place
-                        int index = Messages.IndexOf(existingMessage);
-                        if (index >= 0)
+                        // این پیام قبلاً موجود است - فقط وضعیت را به‌روز کنید
+                        _logger.LogInformation("Message already exists, updating status only");
+
+                        // به‌روزرسانی ID اگر لازم باشد
+                        if (existingMessage.Id < 0 && message.Id > 0)
                         {
-                            // If this is our temporary message that now got a server ID, update it
-                            if (existingMessage.Id < 0 && message.Id > 0)
-                            {
-                                existingMessage.Id = message.Id;
-                            }
-
-                            // Update status
-                            existingMessage.Status = message.Status;
-                            existingMessage.IsRead = message.IsRead;
-                            existingMessage.ReadAt = message.ReadAt;
-
-                            // Update this specific item
-                            Messages[index] = existingMessage;
+                            existingMessage.Id = message.Id;
                         }
+
+                        // به‌روزرسانی وضعیت
+                        existingMessage.Status = message.Status;
+                        existingMessage.IsRead = message.IsRead;
+                        existingMessage.ReadAt = message.ReadAt;
+
+                        // PropertyChanged به طور خودکار اجرا می‌شود
+                        return;
                     }
-                    else
+
+                    // اگر پیام جدید است، به کالکشن اضافه کنید
+                    if (string.IsNullOrEmpty(message.SentAtFormatted))
                     {
-                        // This is a genuinely new message - add to collection
-                        if (string.IsNullOrEmpty(message.SentAtFormatted))
-                        {
-                            message.SentAtFormatted = FormatTimeDisplay(message.SentAt);
-                        }
+                        message.SentAtFormatted = FormatTimeDisplay(message.SentAt);
+                    }
 
-                        Messages.Add(message);
-                        NoMessages = false;
+                    Messages.Add(message);
+                    NoMessages = false;
 
-                        // If this is a received message, mark as read
-                        if (!message.IsOwnMessage)
-                        {
-                            message.IsRead = true;
-                            message.ReadAt = DateTime.UtcNow;
-                            MarkMessageAsReadAsync(message.Id).ConfigureAwait(false);
-                        }
+                    // اگر پیام دریافتی است، آن را خوانده شده علامت‌گذاری کنید
+                    if (!message.IsOwnMessage)
+                    {
+                        message.IsRead = true;
+                        message.ReadAt = DateTime.UtcNow;
+                        MarkMessageAsReadAsync(message.Id).ConfigureAwait(false);
                     }
                 }
                 catch (Exception ex)
@@ -593,23 +564,16 @@ namespace Solvix.Client.MVVM.ViewModels
                     _logger.LogInformation("Message {MessageId} in chat {ChatId} marked as read",
                         messageId, chatId);
 
-                    // Find message in collection
+                    // یافتن پیام در کالکشن
                     var message = Messages.FirstOrDefault(m => m.Id == messageId);
                     if (message != null && message.IsOwnMessage)
                     {
                         _logger.LogInformation("Updating message {MessageId} status to READ", messageId);
 
-                        // Update to read status (double tick)
+                        // به‌روزرسانی وضعیت پیام مستقیماً - PropertyChanged به طور خودکار فعال می‌شود
                         message.IsRead = true;
                         message.ReadAt = DateTime.UtcNow;
                         message.Status = Constants.MessageStatus.Read;
-
-                        // Update in collection to refresh UI
-                        int index = Messages.IndexOf(message);
-                        if (index >= 0)
-                        {
-                            Messages[index] = message;
-                        }
                     }
                 }
                 catch (Exception ex)
