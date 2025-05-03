@@ -6,60 +6,78 @@ namespace Solvix.Client
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            if (value is bool isOwnMessage)
-            {
-                // برای تبدیل رنگ
-                if (parameter != null)
-                {
-                    string paramStr = parameter.ToString();
+            bool isOwnMessage = false;
 
-                    if (paramStr == "BgColor" && typeof(Color).IsAssignableFrom(targetType))
+            // Conversión segura del valor
+            if (value is bool boolValue)
+            {
+                isOwnMessage = boolValue;
+            }
+
+            // Para conversión a LayoutOptions
+            if (targetType == typeof(LayoutOptions))
+            {
+                return isOwnMessage ? LayoutOptions.End : LayoutOptions.Start;
+            }
+
+            // Para conversión a Color
+            if (typeof(Color).IsAssignableFrom(targetType))
+            {
+                // Si hay un parámetro, lo procesamos
+                if (parameter is string paramStr)
+                {
+                    if (paramStr == "BgColor")
                     {
                         try
                         {
-                            // برای رنگ زمینه پیام
-                            return isOwnMessage
-                                ? Application.Current.Resources["SentMessageBubbleColor"]
-                                : Application.Current.Resources["ReceivedMessageBubbleColor"];
+                            // Intentar obtener colores de Resources
+                            if (isOwnMessage)
+                            {
+                                if (Application.Current.Resources.TryGetValue("SentMessageBubbleColor", out var sentColor))
+                                    return sentColor;
+                                return Colors.LightBlue;
+                            }
+                            else
+                            {
+                                if (Application.Current.Resources.TryGetValue("ReceivedMessageBubbleColor", out var receivedColor))
+                                    return receivedColor;
+                                return Colors.LightGray;
+                            }
                         }
                         catch
                         {
-                            // اگر رنگ‌ها در منابع پیدا نشد، رنگ‌های پیش‌فرض
+                            // Colores predeterminados en caso de error
                             return isOwnMessage ? Colors.LightBlue : Colors.LightGray;
                         }
                     }
-                    else if (paramStr == "TextColor" && typeof(Color).IsAssignableFrom(targetType))
+                    else if (paramStr == "TextColor")
                     {
                         try
                         {
-                            // برای رنگ متن پیام
-                            return isOwnMessage
-                                ? Application.Current.Resources["SentMessageTextColor"]
-                                : Application.Current.Resources["ReceivedMessageTextColor"];
+                            // Intentar obtener colores de Resources
+                            if (isOwnMessage)
+                            {
+                                if (Application.Current.Resources.TryGetValue("SentMessageTextColor", out var sentTextColor))
+                                    return sentTextColor;
+                                return Colors.Black;
+                            }
+                            else
+                            {
+                                if (Application.Current.Resources.TryGetValue("ReceivedMessageTextColor", out var receivedTextColor))
+                                    return receivedTextColor;
+                                return Colors.Black;
+                            }
                         }
                         catch
                         {
-                            // رنگ‌های پیش‌فرض
-                            return isOwnMessage ? Colors.Black : Colors.Black;
+                            // Color predeterminado para texto
+                            return Colors.Black;
                         }
                     }
                 }
 
-                // برای LayoutOptions
-                if (targetType == typeof(LayoutOptions))
-                {
-                    return isOwnMessage ? LayoutOptions.End : LayoutOptions.Start;
-                }
-            }
-
-            // مقادیر پیش‌فرض
-            if (typeof(Color).IsAssignableFrom(targetType))
-            {
+                // Valor por defecto para Color
                 return Colors.Gray;
-            }
-            else if (targetType == typeof(LayoutOptions))
-            {
-                return LayoutOptions.Start;
             }
 
             return value;

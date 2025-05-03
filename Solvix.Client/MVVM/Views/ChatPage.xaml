@@ -141,52 +141,46 @@
             </CollectionView.EmptyView>
 
             <CollectionView.ItemTemplate>
+                <!-- بخش پیام‌ها در ChatPage.xaml -->
                 <DataTemplate x:DataType="models:MessageModel">
                     <Grid Padding="10,5">
                         <Border BackgroundColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='BgColor'}"
-                                StrokeThickness="0"
-                                StrokeShape="RoundRectangle 18,18,18,2"
-                                Padding="15,10"
-                                HorizontalOptions="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}}"
-                                MaximumWidthRequest="300">
-                            <Border.Shadow>
-                                <Shadow Brush="{DynamicResource ShadowColor}"
-                                        Offset="0,2"
-                                        Opacity="0.1"
-                                        Radius="3" />
-                            </Border.Shadow>
-
+                StrokeThickness="0"
+                StrokeShape="RoundRectangle 18,18,18,2"
+                Padding="15,10"
+                HorizontalOptions="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}}"
+                MaximumWidthRequest="300">
                             <Grid RowDefinitions="*,Auto">
-                                <!-- محتوای پیام -->
+                                <!-- Contenido del mensaje -->
                                 <Label Grid.Row="0" 
-                                       Text="{Binding Content}" 
-                                       TextColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='TextColor'}" 
-                                       FontSize="16"
-                                       LineBreakMode="WordWrap"
-                                       Margin="0,0,0,5" />
+                       Text="{Binding Content}" 
+                       TextColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='TextColor'}" 
+                       FontSize="16"
+                       LineBreakMode="WordWrap"
+                       Margin="0,0,0,5" />
 
-                                <!-- زمان و وضعیت -->
+                                <!-- Tiempo y estado -->
                                 <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto">
-                                    <!-- آیکون وضعیت (فقط برای پیام‌های خود) -->
+                                    <!-- Ícono de estado (solo para mensajes propios) -->
                                     <Label Grid.Column="0"
-                                           IsVisible="{Binding IsOwnMessage}"
-                                           Text="{Binding Status, Converter={StaticResource MessageStatusIconConverter}}"
-                                           TextColor="{Binding IsFailed, Converter={StaticResource BoolToColorConverter}, ConverterParameter='Error', FallbackValue={StaticResource SecondaryTextColor}}"
-                                           Opacity="{Binding Status, Converter={StaticResource MessageStatusOpacityConverter}}"
-                                           VerticalOptions="Center"
-                                           FontSize="14"
-                                           Margin="0,0,5,0" />
+                           IsVisible="{Binding IsOwnMessage}"
+                           Text="{Binding Status, Converter={StaticResource MessageStatusIconConverter}}"
+                           TextColor="{Binding IsFailed, Converter={StaticResource BoolToColorConverter}, ConverterParameter='Error', FallbackValue={StaticResource SecondaryTextColor}}"
+                           Opacity="{Binding Status, Converter={StaticResource MessageStatusOpacityConverter}}"
+                           VerticalOptions="Center"
+                           FontSize="14"
+                           Margin="0,0,5,0" />
 
-                                    <!-- فاصله‌گذاری -->
+                                    <!-- Espaciador -->
                                     <BoxView Grid.Column="1" BackgroundColor="Transparent" />
 
-                                    <!-- زمان پیام -->
+                                    <!-- Tiempo del mensaje -->
                                     <Label Grid.Column="2" 
-                                           Text="{Binding SentAtFormatted}" 
-                                           TextColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='TextColor'}" 
-                                           FontSize="12"
-                                           VerticalOptions="Center"
-                                           Opacity="0.8" />
+                           Text="{Binding SentAtFormatted}" 
+                           TextColor="{Binding IsOwnMessage, Converter={StaticResource IsOwnMessageToAlignmentConverter}, ConverterParameter='TextColor'}" 
+                           FontSize="12"
+                           VerticalOptions="Center"
+                           Opacity="0.8" />
                                 </Grid>
                             </Grid>
                         </Border>

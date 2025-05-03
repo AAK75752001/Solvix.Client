@@ -99,7 +99,7 @@ namespace Solvix.Client.MVVM.ViewModels
         public ObservableCollection<MessageModel> Messages
         {
             get => _messages;
-            set
+            private set
             {
                 if (_messages != value)
                 {
@@ -351,8 +351,10 @@ namespace Solvix.Client.MVVM.ViewModels
                 IsSending = true;
                 _logger.LogInformation("Sending message to chat {ChatId}: {MessageText}", chatGuid, messageText);
 
-                // ایجاد پیام موقت
-                var tempId = -DateTime.Now.Millisecond - 1000 * new Random().Next(1000, 9999);
+                // Crear ID único negativo para mensaje temporal
+                var tempId = -1 * new Random().Next(10000, 99999);
+
+                // Crear el mensaje temporal
                 var tempMessage = new MessageModel
                 {
                     Id = tempId,
@@ -366,32 +368,56 @@ namespace Solvix.Client.MVVM.ViewModels
                     IsOwnMessage = true
                 };
 
-                // کلید مشکل: پیام را بدون بازسازی کل کالکشن اضافه کنید
-                await MainThread.InvokeOnMainThreadAsync(() => {
-                    // اضافه کردن پیام به کالکشن فعلی بدون ایجاد کالکشن جدید
+                // No reemplazar la colección completa, solo añadir el mensaje
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                {
+                    // Añadir el mensaje a la colección existente
                     Messages.Add(tempMessage);
                     NoMessages = false;
                 });
 
-                // ارسال پیام توسط API
+                // Enviar el mensaje al servidor
                 MessageModel serverMessage = await _chatService.SendMessageAsync(chatGuid, messageText);
 
-                // یافتن پیام در کالکشن و به‌روزرسانی آن
-                await MainThread.InvokeOnMainThreadAsync(() => {
-                    // یافتن پیام موقت در کالکشن
+                // Actualizar el mensaje temporal con la respuesta del servidor
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                {
+                    // Buscar el mensaje temporal en la colección
                     var pendingMessage = Messages.FirstOrDefault(m => m.Id == tempId);
+
                     if (pendingMessage != null)
                     {
                         if (serverMessage != null)
                         {
-                            // به‌روزرسانی ویژگی‌های پیام - این باعث فعال‌سازی PropertyChanged می‌شود
+                            // Actualizar el mensaje con datos del servidor
                             pendingMessage.Id = serverMessage.Id;
                             pendingMessage.Status = Constants.MessageStatus.Sent;
+
+                            // Forzar actualización de la UI sin recrear la colección
+                            var index = Messages.IndexOf(pendingMessage);
+                            if (index >= 0)
+                            {
+                                // Extraer el mensaje
+                                var messageToUpdate = Messages[index];
+
+                                // Remover y reinsertar para forzar actualización de UI
+                                Messages.RemoveAt(index);
+                                Messages.Insert(index, messageToUpdate);
+                            }
                         }
                         else
                         {
-                            // علامت‌گذاری به عنوان خطا
+                            // Marcar como fallido si el servidor no responde
                             pendingMessage.Status = Constants.MessageStatus.Failed;
+
+                            // Forzar actualización de UI
+                            var index = Messages.IndexOf(pendingMessage);
+                            if (index >= 0)
+                            {
+                                var messageToUpdate = Messages[index];
+                                Messages.RemoveAt(index);
+                                Messages.Insert(index, messageToUpdate);
+                            }
                         }
                     }
                 });
@@ -399,7 +425,7 @@ namespace Solvix.Client.MVVM.ViewModels
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in SendMessageAsync: {Message}", ex.Message);
-                await _toastService.ShowToastAsync($"خطا در ارسال پیام: {ex.Message}", ToastType.Error);
+                await _toastService.ShowToastAsync($"Error sending message: {ex.Message}", ToastType.Error);
             }
             finally
             {
@@ -456,30 +482,53 @@ namespace Solvix.Client.MVVM.ViewModels
                 {
                     _logger.LogInformation("Received message {MessageId} for chat {ChatId}", message.Id, message.ChatId);
 
-                    // تعیین اینکه آیا پیام متعلق به خود کاربر است یا خیر
+                    // Determinar si el mensaje es propio
                     message.IsOwnMessage = message.SenderId == _currentUserId;
 
-                    // این بخش کلیدی است - بررسی بسیار دقیق برای تشخیص پیام‌های تکراری
-                    var existingMessage = Messages.FirstOrDefault(m =>
-                        // بررسی بر اساس ID
-                        (m.Id > 0 && m.Id == message.Id) ||
-                        // بررسی برای پیام‌های با ID منفی (موقت) بر اساس محتوا و زمان
-                        (m.Id < 0 && m.Content == message.Content &&
-                        Math.Abs((m.SentAt - message.SentAt).TotalSeconds) < 60));
-
-                    if (existingMessage != null)
+                    // Comprobación de duplicados - primero por ID
+                    if (message.Id > 0)
                     {
-                        _logger.LogInformation("Duplicate message detected, not adding to collection");
-                        return; // اضافه نکردن پیام تکراری
+                        // Buscar por ID exacto
+                        var existingById = Messages.FirstOrDefault(m => m.Id == message.Id);
+                        if (existingById != null)
+                        {
+                            _logger.LogInformation("Mensaje duplicado (mismo ID) detectado: {MessageId}", message.Id);
+                            return; // No añadir duplicados
+                        }
                     }
 
-                    // فقط اگر پیام تکراری نیست، آن را اضافه کنید
+                    // Para mensajes propios, buscar mensajes temporales que deban ser reemplazados
+                    if (message.IsOwnMessage)
+                    {
+                        // Buscar mensaje temporal con mismo contenido y timestamp cercano
+                        var tempMessage = Messages.FirstOrDefault(m =>
+                            m.Id < 0 && // ID negativo = temporal
+                            m.IsOwnMessage &&
+                            m.Content == message.Content &&
+                            Math.Abs((m.SentAt - message.SentAt).TotalSeconds) < 30);
+
+                        if (tempMessage != null)
+                        {
+                            _logger.LogInformation("Reemplazando mensaje temporal por mensaje del servidor");
+
+                            int index = Messages.IndexOf(tempMessage);
+                            if (index >= 0)
+                            {
+                                // Reemplazar el mensaje temporal
+                                Messages.RemoveAt(index);
+                                Messages.Insert(index, message);
+                                return; // No continuar, ya se reemplazó
+                            }
+                        }
+                    }
+
+                    // Si no es duplicado, añadir a la colección
                     Messages.Add(message);
                     NoMessages = false;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error processing received message");
+                    _logger.LogError(ex, "Error al procesar mensaje recibido");
                 }
             });
         }
@@ -531,27 +580,35 @@ namespace Solvix.Client.MVVM.ViewModels
             {
                 try
                 {
-                    _logger.LogInformation("Message {MessageId} in chat {ChatId} marked as read",
-                        messageId, chatId);
+                    _logger.LogInformation("Message {MessageId} in chat {ChatId} marked as read", messageId, chatId);
 
                     // یافتن پیام در کالکشن
                     var message = Messages.FirstOrDefault(m => m.Id == messageId);
                     if (message != null && message.IsOwnMessage)
                     {
-                        _logger.LogInformation("Updating message {MessageId} status to READ", messageId);
-
-                        // به‌روزرسانی وضعیت پیام مستقیماً - PropertyChanged به طور خودکار فعال می‌شود
+                        // به‌روزرسانی وضعیت مستقیم بدون جایگزینی شیء
                         message.IsRead = true;
                         message.ReadAt = DateTime.UtcNow;
                         message.Status = Constants.MessageStatus.Read;
+
+                        // برای اطمینان از به‌روزرسانی UI
+                        int index = Messages.IndexOf(message);
+                        if (index >= 0)
+                        {
+                            // اجبار به به‌روزرسانی
+                            var temp = Messages[index];
+                            Messages.RemoveAt(index);
+                            Messages.Insert(index, temp);
+                        }
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error processing message read status update");
+                    _logger.LogError(ex, "Error handling message read status");
                 }
             });
         }
+
 
         private async Task LoadMoreMessagesAsync()
         {

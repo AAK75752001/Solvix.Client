@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Logging;
+using Solvix.Client.Core.Models;
 using Solvix.Client.MVVM.ViewModels;
 
 namespace Solvix.Client.MVVM.Views;
@@ -50,6 +51,15 @@ public partial class ChatPage : ContentPage
         }
     }
 
+    private void OnMessageBubbleLoaded(object sender, EventArgs e)
+    {
+        if (sender is Border messageBubble &&
+            messageBubble.BindingContext is MessageModel message)
+        {
+            messageBubble.BackgroundColor = message.IsOwnMessage ?
+                Colors.LightBlue : Colors.LightGray;
+        }
+    }
     protected override void OnAppearing()
     {
         base.OnAppearing();

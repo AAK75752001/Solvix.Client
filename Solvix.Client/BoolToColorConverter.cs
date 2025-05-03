@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Globalization;
 
 namespace Solvix.Client
 {
@@ -11,30 +6,49 @@ namespace Solvix.Client
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            if (value is bool boolValue && boolValue && parameter is string paramStr)
+            // Valor predeterminado
+            bool condition = false;
+
+            // Intentar convertir el valor a bool
+            if (value is bool boolValue)
             {
-                switch (paramStr)
-                {
-                    case "Error":
-                        return Colors.Red;
-                    case "Success":
-                        return Colors.Green;
-                    case "Warning":
-                        return Colors.Orange;
-                    case "Info":
-                        return Colors.Blue;
-                }
+                condition = boolValue;
+            }
+            else if (value is string strValue)
+            {
+                bool.TryParse(strValue, out condition);
+            }
+            // Si el valor es null, tratar como false
+            else if (value == null)
+            {
+                condition = false;
             }
 
-            // حالت پیش‌فرض بر اساس تم فعلی
+            // Si la condición es true y hay un parámetro
+            if (condition && parameter is string paramStr)
+            {
+                // Asignar colores según el parámetro
+                return paramStr switch
+                {
+                    "Error" => Colors.Red,
+                    "Success" => Colors.Green,
+                    "Warning" => Colors.Orange,
+                    "Info" => Colors.Blue,
+                    _ => Colors.Gray
+                };
+            }
+
+            // Color predeterminado
             try
             {
-                return Application.Current.Resources["SecondaryTextColor"];
+                if (Application.Current.Resources.TryGetValue("SecondaryTextColor", out var color))
+                {
+                    return color;
+                }
             }
-            catch
-            {
-                return Colors.Gray;
-            }
+            catch { }
+
+            return Colors.Gray;
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
