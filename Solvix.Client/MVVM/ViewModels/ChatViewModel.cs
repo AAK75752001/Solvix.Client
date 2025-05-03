@@ -108,26 +108,24 @@ namespace Solvix.Client.MVVM.ViewModels
             get => _messages;
             private set
             {
-                if (_messages != value)
+                if (_messages != value && value != null)
                 {
                     if (_messages != null)
                     {
                         _messages.CollectionChanged -= Messages_CollectionChanged;
                     }
 
-                    _messages.Clear();
-                    if (value != null)
+                    var originalItems = new HashSet<int>(_messages.Select(m => m.Id));
+
+                    foreach (var item in value)
                     {
-                        foreach (var item in value)
+                        if (!originalItems.Contains(item.Id))
                         {
                             _messages.Add(item);
                         }
                     }
 
-                    if (_messages != null)
-                    {
-                        _messages.CollectionChanged += Messages_CollectionChanged;
-                    }
+                    _messages.CollectionChanged += Messages_CollectionChanged;
 
                     OnPropertyChanged();
                     NoMessages = _messages.Count == 0;
@@ -266,7 +264,10 @@ namespace Solvix.Client.MVVM.ViewModels
                             _pendingMessagesById.TryRemove(tempId, out _);
 
                             // به‌روزرسانی UI
-                            CollectionExtensions.UpdateItem(Messages, tempIndex);
+                            //CollectionExtensions.UpdateItem(Messages, tempIndex);
+                            Messages[tempIndex].OnPropertyChanged(nameof(MessageModel.Id));
+                            Messages[tempIndex].OnPropertyChanged(nameof(MessageModel.Status));
+
 
                             _logger.LogInformation("Updated temp message {TempId} with server ID {MessageId}", tempId, messageId);
                         }
