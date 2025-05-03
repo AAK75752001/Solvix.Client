@@ -110,12 +110,11 @@
 
         <!-- پیام‌ها -->
         <CollectionView Grid.Row="1" 
-                       ItemsSource="{Binding Messages}"
-                       Margin="0,10,0,0"
-                       ItemsUpdatingScrollMode="KeepLastItemInView"
-                       SelectionMode="None"
-                       RemainingItemsThreshold="20"
-                       RemainingItemsThresholdReachedCommand="{Binding LoadMoreMessagesCommand}">
+               ItemsSource="{Binding Messages}"
+               Margin="0,10,0,0"
+               ItemsUpdatingScrollMode="KeepLastItemInView"
+               RemainingItemsThreshold="20"
+               RemainingItemsThresholdReachedCommand="{Binding LoadMoreMessagesCommand}">
 
             <CollectionView.EmptyView>
                 <Grid IsVisible="{Binding IsLoading, Converter={StaticResource InvertedBoolConverter}}">

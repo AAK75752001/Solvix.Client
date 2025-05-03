@@ -31,6 +31,8 @@ namespace Solvix.Client.MVVM.ViewModels
         private bool _isLoadingMore;
         private int _messagesSkip = 0;
         private const int MessagesPageSize = 30;
+        private bool _isFirstLoad = true;
+
 
         // دیکشنری برای پیگیری پیام‌های موقت با استفاده از ConcurrentDictionary برای امنیت چندنخی
         // کلید: ID موقت (منفی)، مقدار: CorrelationId
@@ -361,12 +363,22 @@ namespace Solvix.Client.MVVM.ViewModels
 
                         // مرتب‌سازی بر اساس زمان ارسال و به‌روزرسانی کالکشن
                         var sortedMessages = messages.OrderBy(m => m.SentAt).ToList();
-                        Messages = new ObservableCollection<MessageModel>(sortedMessages);
+                        if (_isFirstLoad)
+                        {
+                            // فقط برای بار اول کل کالکشن را جایگزین می‌کنیم
+                            Messages.Clear();
+                            foreach (var message in sortedMessages)
+                            {
+                                Messages.Add(message);
+                            }
+                            _isFirstLoad = false;
+                        }
                     }
-                    else if (messages != null && messages.Count == 0)
+                    else if (messages != null && messages.Count == 0 && _isFirstLoad)
                     {
-                        Messages = new ObservableCollection<MessageModel>();
+                        Messages.Clear();
                         NoMessages = true;
+                        _isFirstLoad = false;
                     }
 
                     // پایان بارگذاری
@@ -483,44 +495,34 @@ namespace Solvix.Client.MVVM.ViewModels
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     // یافتن پیام موقت در کالکشن
-                    var index = -1;
-                    for (int i = 0; i < Messages.Count; i++)
-                    {
-                        if (Messages[i].Id == tempId)
-                        {
-                            index = i;
-                            break;
-                        }
-                    }
-
-                    if (index >= 0)
+                    var tempMessage = Messages.FirstOrDefault(m => m.Id == tempId);
+                    if (tempMessage != null)
                     {
                         if (serverMessage != null)
                         {
-                            // به‌روزرسانی شناسه و وضعیت
-                            Messages[index].Id = serverMessage.Id;
-                            Messages[index].Status = Constants.MessageStatus.Sent;
+                            // به جای جایگزینی، خصوصیت‌های پیام را به‌روزرسانی می‌کنیم
+                            tempMessage.Id = serverMessage.Id;
+                            tempMessage.Status = Constants.MessageStatus.Sent;
+
+                            // اعلان تغییر خصوصیت برای به‌روزرسانی UI
+                            tempMessage.OnPropertyChanged(nameof(MessageModel.Id));
+                            tempMessage.OnPropertyChanged(nameof(MessageModel.Status));
 
                             // به‌روزرسانی نگاشت‌ها
                             _pendingMessagesById.TryRemove(tempId, out _);
                             _pendingMessagesByCorrelation[correlationId] = serverMessage.Id;
 
-                            // اعلان به‌روزرسانی UI
-                            CollectionExtensions.UpdateItem(Messages, index);
-
                             _logger.LogInformation("Updated message from temp ID {TempId} to server ID {ServerId}", tempId, serverMessage.Id);
                         }
                         else
                         {
-                            // علامت‌گذاری به عنوان ناموفق اگر پاسخی از سرور دریافت نشد
-                            Messages[index].Status = Constants.MessageStatus.Failed;
+                            // علامت‌گذاری به عنوان ناموفق
+                            tempMessage.Status = Constants.MessageStatus.Failed;
+                            tempMessage.OnPropertyChanged(nameof(MessageModel.Status));
 
                             // پاک کردن از نگاشت‌ها
                             _pendingMessagesById.TryRemove(tempId, out _);
                             _pendingMessagesByCorrelation.TryRemove(correlationId, out _);
-
-                            // اعلان به‌روزرسانی UI
-                            CollectionExtensions.UpdateItem(Messages, index);
 
                             _logger.LogWarning("Message sending failed, marked as failed");
                         }
@@ -650,13 +652,17 @@ namespace Solvix.Client.MVVM.ViewModels
                                     _pendingMessagesByCorrelation[correlationId] = message.Id;
                                 }
 
-                                // به‌روزرسانی پیام در لیست
+                                // به‌روزرسانی پیام در لیست - بدون جایگزینی عنصر
+                                // بجای جایگزینی عنصر، خصوصیت‌های آن را به‌روزرسانی می‌کنیم
                                 Messages[tempIndex].Id = message.Id;
                                 Messages[tempIndex].SentAt = message.SentAt;
                                 Messages[tempIndex].Status = Constants.MessageStatus.Delivered;
 
-                                // به‌روزرسانی UI
-                                CollectionExtensions.UpdateItem(Messages, tempIndex);
+                                // اعلان تغییر خصوصیت برای به‌روزرسانی UI
+                                Messages[tempIndex].OnPropertyChanged(nameof(MessageModel.Id));
+                                Messages[tempIndex].OnPropertyChanged(nameof(MessageModel.SentAt));
+                                Messages[tempIndex].OnPropertyChanged(nameof(MessageModel.Status));
+
                                 return;
                             }
                         }
@@ -666,8 +672,12 @@ namespace Solvix.Client.MVVM.ViewModels
                     if (!Messages.Any(m => m.Id == message.Id && m.Id > 0))
                     {
                         _logger.LogInformation("Adding new message {MessageId} to collection", message.Id);
+
+                        // اضافه کردن به کالکشن موجود - بدون ایجاد کالکشن جدید
                         Messages.Add(message);
                         NoMessages = false;
+
+                        // اسکرول به آخرین پیام - باید منطق مربوطه در XAML هم تنظیم شود
 
                         // اگر این پیام از طرف مقابل است، به عنوان خوانده شده علامت‌گذاری کنیم
                         if (!message.IsOwnMessage)
@@ -788,12 +798,33 @@ namespace Solvix.Client.MVVM.ViewModels
                     // افزودن به ابتدای لیست - اینها پیام‌های قدیمی‌تر هستند
                     await MainThread.InvokeOnMainThreadAsync(() =>
                     {
-                        var existingMessages = Messages.ToList();
-                        var combined = messages.Union(existingMessages)
-                            .OrderBy(m => m.SentAt)
-                            .ToList();
+                        // بدست آوردن ID پیام‌های موجود
+                        var existingIds = Messages.Select(m => m.Id).ToHashSet();
 
-                        Messages = new ObservableCollection<MessageModel>(combined);
+                        // مرتب‌سازی پیام‌ها بر اساس زمان
+                        var sortedMessages = messages.OrderBy(m => m.SentAt).ToList();
+
+                        // اضافه کردن پیام‌ها به ابتدای کالکشن موجود
+                        bool addedAny = false;
+                        foreach (var message in sortedMessages)
+                        {
+                            if (!existingIds.Contains(message.Id))
+                            {
+                                Messages.Insert(0, message);
+                                addedAny = true;
+                            }
+                        }
+
+                        // لاگ نتایج
+                        if (addedAny)
+                        {
+                            _logger.LogInformation("Added {Count} older messages to the beginning of the collection",
+                                sortedMessages.Count);
+                        }
+                        else
+                        {
+                            _logger.LogInformation("No new messages were added to the collection");
+                        }
                     });
                 }
                 else
