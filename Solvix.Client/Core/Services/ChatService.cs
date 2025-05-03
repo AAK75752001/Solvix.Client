@@ -157,78 +157,78 @@ namespace Solvix.Client.Core.Services
         {
             if (string.IsNullOrWhiteSpace(content))
             {
-                _logger.LogWarning("تلاش برای ارسال پیام خالی به چت {ChatId}", chatId);
-                await _toastService.ShowToastAsync("پیام نمی‌تواند خالی باشد", ToastType.Warning);
+                _logger.LogWarning("Attempting to send empty message to chat {ChatId}", chatId);
+                await _toastService.ShowToastAsync("Message cannot be empty", ToastType.Warning);
                 return null;
             }
 
             try
             {
-                _logger.LogInformation("ارسال پیام به چت {ChatId}", chatId);
+                _logger.LogInformation("Sending message to chat {ChatId}", chatId);
 
-                // ایجاد DTO برای تماس API
-                var dto = new SendMessageDto
+                // Create DTO for API call
+                var dto = new
                 {
                     ChatId = chatId,
                     Content = content
                 };
 
-                // ارسال از طریق API برای ذخیره‌سازی پایدار
+                // Send via API for persistent storage
                 var response = await _apiService.PostAsync<MessageModel>(Constants.Endpoints.SendMessage, dto);
 
                 if (response != null)
                 {
-                    _logger.LogInformation("پیام با موفقیت به چت {ChatId} ارسال شد، شناسه سرور: {MessageId}",
+                    _logger.LogInformation("Message successfully sent to chat {ChatId}, server ID: {MessageId}",
                         chatId, response.Id);
 
-                    // دریافت شناسه کاربر فعلی
+                    // Get current user ID
                     var currentUserId = await GetCurrentUserIdAsync();
 
-                    // پر کردن خصوصیت‌های اضافی برای رابط کاربری
+                    // Fill additional properties for UI
                     response.Status = Constants.MessageStatus.Sent;
 
-                    // زمان ارسال را به زمان محلی تبدیل کنید برای نمایش دقیق
+                    // Convert sent time to local time for accurate display
                     var localSentTime = response.SentAt.ToLocalTime();
                     response.SentAtFormatted = localSentTime.ToString("HH:mm");
                     response.IsOwnMessage = response.SenderId == currentUserId;
 
-                    // پاک کردن ردیابی پیام در SignalR برای اطمینان از تشخیص گردش
+                    // Clear message tracking in SignalR to ensure duplicate detection
                     await _signalRService.ClearMessageTrackingAsync();
 
                     try
                     {
-                        // به این منتظر نمانید تا عملکرد درک‌شده بهبود یابد
+                        // Don't await this to improve perceived performance
                         _ = _signalRService.SendMessageAsync(chatId, content);
                     }
                     catch (Exception ex)
                     {
-                        // ثبت خطا اما ادامه دهید - پیام قبلاً از طریق API ذخیره شده است
-                        _logger.LogWarning(ex, "خطا در ارسال پیام از طریق SignalR به چت {ChatId}، اما ذخیره API موفق بود", chatId);
+                        // Log error but continue - message has already been stored via API
+                        _logger.LogWarning(ex, "Error sending message via SignalR to chat {ChatId}, but API storage succeeded", chatId);
                     }
 
-                    // کش را به عنوان نامعتبر علامت‌گذاری کنید تا اطلاعات تازه در بارگذاری بعدی تضمین شود
+                    // Mark cache as invalid to ensure fresh data on next load
                     MessageCache.InvalidateCache(chatId);
 
                     return response;
                 }
                 else
                 {
-                    _logger.LogWarning("ارسال پیام به چت {ChatId} از طریق API با شکست مواجه شد", chatId);
+                    _logger.LogWarning("Failed to send message to chat {ChatId} via API", chatId);
 
-                    // تلاش SignalR به عنوان پشتیبان
+                    // Try SignalR as fallback
                     try
                     {
                         await _signalRService.SendMessageAsync(chatId, content);
-                        _logger.LogInformation("پیام فقط از طریق SignalR به چت {ChatId} ارسال شد", chatId);
+                        _logger.LogInformation("Message sent to chat {ChatId} via SignalR only", chatId);
 
-                        // ایجاد یک پیام شبیه‌سازی شده با شناسه موقت
+                        // Create a simulated message with temporary ID
                         return new MessageModel
                         {
-                            Id = -DateTime.Now.Millisecond, // شناسه منفی موقت
+                            Id = -DateTime.Now.Millisecond, // Temporary negative ID
                             Content = content,
                             SentAt = DateTime.UtcNow,
                             SenderId = await GetCurrentUserIdAsync(),
-                            SenderName = "شما",
+                            SenderName = "You",
                             ChatId = chatId,
                             Status = Constants.MessageStatus.Sent,
                             IsOwnMessage = true,
@@ -237,16 +237,16 @@ namespace Solvix.Client.Core.Services
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "ارسال پیام از طریق هر دو API و SignalR با شکست مواجه شد");
-                        await _toastService.ShowToastAsync("پیام ارسال نشد", ToastType.Error);
+                        _logger.LogError(ex, "Failed to send message via both API and SignalR");
+                        await _toastService.ShowToastAsync("Message not sent", ToastType.Error);
                         return null;
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "خطا در ارسال پیام به چت {ChatId}", chatId);
-                await _toastService.ShowToastAsync("ارسال پیام با شکست مواجه شد: " + ex.Message, ToastType.Error);
+                _logger.LogError(ex, "Error sending message to chat {ChatId}", chatId);
+                await _toastService.ShowToastAsync("Failed to send message: " + ex.Message, ToastType.Error);
                 return null;
             }
         }
