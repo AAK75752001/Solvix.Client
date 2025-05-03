@@ -19,6 +19,8 @@ namespace Solvix.Client.Core.Models
         private bool? _isOwnMessage;
         private int _status = Constants.MessageStatus.Sending;
         private string _sentAtFormatted = string.Empty;
+        public int ClientCorrelationId { get; set; }
+
 
         public int Id
         {
@@ -178,7 +180,7 @@ namespace Solvix.Client.Core.Models
                     OnPropertyChanged(nameof(IsFailed));
                 }
             }
-        }        
+        }
 
         [JsonIgnore]
         public string SentAtFormatted
@@ -273,13 +275,16 @@ namespace Solvix.Client.Core.Models
         [JsonIgnore]
         public string Signature => $"{SenderId}:{Content.GetHashCode()}:{SentAt.Ticks}";
 
+        #region INotifyPropertyChanged
         // اضافه کردن کد پشتیبانی از PropertyChanged
         public event PropertyChangedEventHandler PropertyChanged;
 
-        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
+        public void OnPropertyChanged([CallerMemberName] string propertyName = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
+        #endregion
+
 
         // بازنویسی Equals و GetHashCode برای مقایسه بهتر
         public override bool Equals(object obj)
