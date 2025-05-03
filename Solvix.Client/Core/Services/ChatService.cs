@@ -71,6 +71,103 @@ namespace Solvix.Client.Core.Services
             }
         }
 
+        public async Task<MessageModel?> SendMessageWithCorrelationAsync(Guid chatId, string content, string correlationId)
+        {
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                _logger.LogWarning("Attempting to send empty message to chat {ChatId}", chatId);
+                await _toastService.ShowToastAsync("Message cannot be empty", ToastType.Warning);
+                return null;
+            }
+
+            try
+            {
+                _logger.LogInformation("Sending message to chat {ChatId} with correlationId {CorrelationId}",
+                    chatId, correlationId);
+
+                // ایجاد DTO برای API با اضافه کردن فیلد همبستگی
+                var dto = new
+                {
+                    ChatId = chatId,
+                    Content = content,
+                    CorrelationId = correlationId
+                };
+
+                // ارسال از طریق API
+                var response = await _apiService.PostAsync<MessageModel>(Constants.Endpoints.SendMessage, dto);
+
+                if (response != null)
+                {
+                    _logger.LogInformation("Message successfully sent with server ID: {MessageId}", response.Id);
+
+                    // تنظیم خصوصیات اضافی
+                    response.Status = Constants.MessageStatus.Sent;
+                    response.CorrelationId = correlationId;
+                    var localSentTime = response.SentAt.ToLocalTime();
+                    response.SentAtFormatted = localSentTime.ToString("HH:mm");
+                    response.IsOwnMessage = response.SenderId == await GetCurrentUserIdAsync();
+
+                    // پاک کردن ردیابی پیام در SignalR
+                    await _signalRService.ClearMessageTrackingAsync();
+
+                    try
+                    {
+                        // ارسال از طریق SignalR با همبستگی
+                        _ = _signalRService.SendMessageWithCorrelationAsync(chatId, content, correlationId);
+                    }
+                    catch (Exception ex)
+                    {
+                        // خطای SignalR را لاگ کنیم اما ادامه دهیم - پیام از طریق API ذخیره شده است
+                        _logger.LogWarning(ex, "Error sending message via SignalR to chat {ChatId}, but API storage succeeded", chatId);
+                    }
+
+                    // نشانه‌گذاری کش به عنوان نامعتبر
+                    MessageCache.InvalidateCache(chatId);
+
+                    return response;
+                }
+                else
+                {
+                    _logger.LogWarning("Failed to send message via API");
+
+                    // تلاش SignalR به عنوان جایگزین
+                    try
+                    {
+                        await _signalRService.SendMessageWithCorrelationAsync(chatId, content, correlationId);
+                        _logger.LogInformation("Message sent via SignalR only");
+
+                        // ایجاد یک پیام شبیه‌سازی شده
+                        return new MessageModel
+                        {
+                            Id = -DateTime.Now.Millisecond, // ID منفی موقت
+                            Content = content,
+                            SentAt = DateTime.UtcNow,
+                            SenderId = await GetCurrentUserIdAsync(),
+                            SenderName = "You",
+                            ChatId = chatId,
+                            Status = Constants.MessageStatus.Sent,
+                            IsOwnMessage = true,
+                            SentAtFormatted = DateTime.Now.ToString("HH:mm"),
+                            CorrelationId = correlationId
+                        };
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to send message via both API and SignalR");
+                        await _toastService.ShowToastAsync("Message not sent", ToastType.Error);
+                        return null;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending message to chat {ChatId}", chatId);
+                await _toastService.ShowToastAsync("Failed to send message: " + ex.Message, ToastType.Error);
+                return null;
+            }
+        }
+
+
         public async Task<List<MessageModel>> GetMessagesAsync(Guid chatId, int skip = 0, int take = 50)
         {
             try

@@ -200,6 +200,63 @@ namespace Solvix.Client.Core.Services
             }
         }
 
+        public async Task<MessageModel?> SendMessageWithCorrelationAsync(Guid chatId, string content, string correlationId)
+        {
+            try
+            {
+                _logger.LogInformation("DiagnosticChatService: Sending message to chat {ChatId} with correlationId {CorrelationId}",
+                    chatId, correlationId);
+
+                var message = await _originalService.SendMessageWithCorrelationAsync(chatId, content, correlationId);
+
+                if (message != null)
+                {
+                    _logger.LogInformation("DiagnosticChatService: Message sent successfully with server ID: {MessageId}",
+                        message.Id);
+                    return message;
+                }
+                else
+                {
+                    _logger.LogWarning("DiagnosticChatService: Failed to send message via API with correlationId {CorrelationId}",
+                        correlationId);
+                    await _toastService.ShowToastAsync("Failed to send message through API, showing mock message", ToastType.Warning);
+
+                    return new MessageModel
+                    {
+                        Id = new Random().Next(1000, 9999),
+                        ChatId = chatId,
+                        Content = content,
+                        SentAt = DateTime.UtcNow,
+                        SenderId = await GetCurrentUserIdAsync(),
+                        SenderName = "You (Mock)",
+                        Status = Constants.MessageStatus.Sent,
+                        SentAtFormatted = DateTime.UtcNow.ToString("HH:mm"),
+                        CorrelationId = correlationId
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "DiagnosticChatService: Error sending message with correlationId {CorrelationId}",
+                    correlationId);
+                await _toastService.ShowToastAsync($"Error sending message: {ex.Message}", ToastType.Error);
+
+                return new MessageModel
+                {
+                    Id = new Random().Next(1000, 9999),
+                    ChatId = chatId,
+                    Content = content,
+                    SentAt = DateTime.UtcNow,
+                    SenderId = await GetCurrentUserIdAsync(),
+                    SenderName = "You (Mock)",
+                    Status = Constants.MessageStatus.Sent,
+                    SentAtFormatted = DateTime.UtcNow.ToString("HH:mm"),
+                    CorrelationId = correlationId
+                };
+            }
+        }
+
+
         public async Task MarkAsReadAsync(Guid chatId, List<int> messageIds)
         {
             try

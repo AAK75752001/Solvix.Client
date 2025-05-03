@@ -19,8 +19,7 @@ namespace Solvix.Client.Core.Models
         private bool? _isOwnMessage;
         private int _status = Constants.MessageStatus.Sending;
         private string _sentAtFormatted = string.Empty;
-        public int ClientCorrelationId { get; set; }
-
+        private string _correlationId = string.Empty;
 
         public int Id
         {
@@ -152,6 +151,20 @@ namespace Solvix.Client.Core.Models
             }
         }
 
+        [JsonIgnore]
+        public string CorrelationId
+        {
+            get => _correlationId;
+            set
+            {
+                if (_correlationId != value)
+                {
+                    _correlationId = value ?? string.Empty;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
         // خصوصیت‌های محلی برای رابط کاربری
         [JsonIgnore]
         public DateTime LocalSentAt
@@ -172,7 +185,7 @@ namespace Solvix.Client.Core.Models
                 if (_status != value)
                 {
                     _status = value;
-                    OnPropertyChanged(nameof(Status));
+                    OnPropertyChanged();
                     OnPropertyChanged(nameof(StatusIcon));
                     OnPropertyChanged(nameof(IsSent));
                     OnPropertyChanged(nameof(IsDelivered));
@@ -273,10 +286,9 @@ namespace Solvix.Client.Core.Models
 
         // ایجاد امضای منحصر به فرد برای جلوگیری از تکرار پیام
         [JsonIgnore]
-        public string Signature => $"{SenderId}:{Content.GetHashCode()}:{SentAt.Ticks}";
+        public string Signature => $"{SenderId}:{Content.GetHashCode()}:{SentAt.Ticks}:{CorrelationId}";
 
         #region INotifyPropertyChanged
-        // اضافه کردن کد پشتیبانی از PropertyChanged
         public event PropertyChangedEventHandler PropertyChanged;
 
         public void OnPropertyChanged([CallerMemberName] string propertyName = null)
@@ -285,17 +297,22 @@ namespace Solvix.Client.Core.Models
         }
         #endregion
 
-
         // بازنویسی Equals و GetHashCode برای مقایسه بهتر
         public override bool Equals(object obj)
         {
             if (obj is MessageModel other)
             {
+                // اگر هر دو پیام دارای CorrelationId باشند و یکسان باشند
+                if (!string.IsNullOrEmpty(CorrelationId) && !string.IsNullOrEmpty(other.CorrelationId))
+                {
+                    return CorrelationId == other.CorrelationId;
+                }
+
                 // پیام‌ها را برابر در نظر بگیرید اگر همان شناسه را داشته باشند (اگر شناسه > 0)
-                // یا اگر امضای یکسانی برای پیام‌های موقت داشته باشند
                 if (Id > 0 && other.Id > 0)
                     return Id == other.Id;
 
+                // مقایسه بر اساس محتوا و زمان ارسال
                 return SenderId == other.SenderId &&
                        Content == other.Content &&
                        Math.Abs((SentAt - other.SentAt).TotalSeconds) < 60;
@@ -305,6 +322,10 @@ namespace Solvix.Client.Core.Models
 
         public override int GetHashCode()
         {
+            // اگر CorrelationId وجود دارد، از آن استفاده کنیم
+            if (!string.IsNullOrEmpty(CorrelationId))
+                return CorrelationId.GetHashCode();
+
             // از شناسه برای پیام‌های دائمی، از امضا برای موقت‌ها
             if (Id > 0)
                 return Id.GetHashCode();

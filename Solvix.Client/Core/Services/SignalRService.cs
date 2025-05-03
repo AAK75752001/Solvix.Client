@@ -29,6 +29,8 @@ namespace Solvix.Client.Core.Services
         public event Action<string> OnError;
         public event Action<long, bool, DateTime?> OnUserStatusChanged;
         public event Action<int> OnMessageConfirmed;
+        public event Action<string, int> OnMessageCorrelationConfirmed;
+
 
         public SignalRService(
             ISecureStorageService secureStorageService,
@@ -125,6 +127,46 @@ namespace Solvix.Client.Core.Services
             }
         }
 
+
+        public async Task SendMessageWithCorrelationAsync(Guid chatId, string message, string correlationId)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                _logger.LogWarning("Attempted to send empty message to chat {ChatId}", chatId);
+                return;
+            }
+
+            try
+            {
+                // فقط در صورت اتصال به SignalR تلاش کنیم
+                if (_hubConnection.State != HubConnectionState.Connected)
+                {
+                    _logger.LogInformation("Not connected to SignalR, message will be sent via API only");
+                    return;
+                }
+
+                _logger.LogInformation("Sending message to chat {ChatId} via SignalR with correlationId {CorrelationId}",
+                    chatId, correlationId);
+
+                // استفاده از تایم‌اوت برای جلوگیری از انتظار طولانی
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+
+                // اینجا باید از signature method منطبق با سمت سرور استفاده کنید
+                // اگر سرور شما SendToChat را با سه پارامتر پشتیبانی نمی‌کند، باید آن را اضافه کنید یا از دو پارامتر استفاده کنید
+                await _hubConnection.InvokeAsync("SendToChat", chatId, message, correlationId, cts.Token);
+
+                _logger.LogInformation("Message sent via SignalR with correlationId {CorrelationId}", correlationId);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning("SignalR message sending timed out for chat {ChatId}", chatId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error sending message via SignalR to chat {ChatId}", chatId);
+            }
+        }
+
         private void ConfigureEventHandlers()
         {
             try
@@ -218,6 +260,17 @@ namespace Solvix.Client.Core.Services
                     MainThread.InvokeOnMainThreadAsync(() =>
                     {
                         OnMessageRead?.Invoke(chatId, messageId);
+                    });
+                });
+
+
+                _hubConnection.On<string, int>("MessageCorrelationConfirmation", (correlationId, messageId) =>
+                {
+                    _logger.LogInformation("Message with correlationId {CorrelationId} confirmed with server ID {MessageId}", correlationId, messageId);
+
+                    MainThread.InvokeOnMainThreadAsync(() =>
+                    {
+                        OnMessageCorrelationConfirmed?.Invoke(correlationId, messageId);
                     });
                 });
 
