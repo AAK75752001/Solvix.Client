@@ -108,27 +108,22 @@ namespace Solvix.Client.MVVM.ViewModels
             get => _messages;
             private set
             {
-                if (_messages != value && value != null)
+                if (_messages != value)
                 {
                     if (_messages != null)
                     {
                         _messages.CollectionChanged -= Messages_CollectionChanged;
                     }
 
-                    var originalItems = new HashSet<int>(_messages.Select(m => m.Id));
+                    _messages = value;
 
-                    foreach (var item in value)
+                    if (_messages != null)
                     {
-                        if (!originalItems.Contains(item.Id))
-                        {
-                            _messages.Add(item);
-                        }
+                        _messages.CollectionChanged += Messages_CollectionChanged;
                     }
 
-                    _messages.CollectionChanged += Messages_CollectionChanged;
-
                     OnPropertyChanged();
-                    NoMessages = _messages.Count == 0;
+                    NoMessages = _messages?.Count == 0;
                 }
             }
         }
@@ -377,22 +372,17 @@ namespace Solvix.Client.MVVM.ViewModels
                             // اگر بار اول است، لیست موجود را پاک کنید
                             if (_isFirstLoad)
                             {
-                                // ابتدا پاک کنید
-                                var cachedMessages = new List<MessageModel>(Messages);
-                                Messages.Clear();
-
-                                // سپس همه را اضافه کنید
-                                foreach (var message in sortedMessages)
-                                {
-                                    Messages.Add(message);
-                                }
-
+                                // ایجاد کالکشن جدید با تمام پیام‌ها
+                                var newMessages = new ObservableCollection<MessageModel>(sortedMessages);
+                                Messages = newMessages; // فقط یک بار رویداد تغییر را فراخوانی می‌کند
                                 _isFirstLoad = false;
                             }
                             else
                             {
                                 // اضافه کردن پیام‌های جدید فقط (اگر از قبل وجود ندارند)
-                                var existingIds = Messages.Select(m => m.Id).ToHashSet();
+                                var existingIds = new HashSet<int>(Messages.Select(m => m.Id));
+
+                                // فقط پیام‌های جدید را اضافه کنیم
                                 foreach (var message in sortedMessages)
                                 {
                                     if (!existingIds.Contains(message.Id))
@@ -404,7 +394,8 @@ namespace Solvix.Client.MVVM.ViewModels
                         }
                         else if (messages != null && messages.Count == 0 && _isFirstLoad)
                         {
-                            Messages.Clear();
+                            // اگر پیامی نیست، کالکشن خالی را مستقیماً تنظیم کنیم
+                            Messages = new ObservableCollection<MessageModel>();
                             NoMessages = true;
                             _isFirstLoad = false;
                         }
@@ -514,14 +505,14 @@ namespace Solvix.Client.MVVM.ViewModels
                 _pendingMessagesById[tempId] = correlationId;
                 _pendingMessagesByCorrelation[correlationId] = tempId;
 
-                // از dispatcher استفاده کنید و همیشه یک try-catch در آن قرار دهید
+                // فقط پیام جدید را اضافه کنیم - بدون تغییر کل کالکشن
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     try
                     {
                         // پیام موقت را به کالکشن موجود اضافه کنید
                         Messages.Add(tempMessage);
-                        NoMessages = false;
+                        NoMessages = Messages.Count == 0;
                     }
                     catch (Exception ex)
                     {
@@ -532,24 +523,33 @@ namespace Solvix.Client.MVVM.ViewModels
                 // ارسال پیام به سرور با شناسه همبستگی
                 var serverMessage = await _chatService.SendMessageWithCorrelationAsync(chatGuid, messageText, correlationId);
 
-                // به‌روزرسانی پیام موقت با پاسخ سرور - بدون جایگزینی کالکشن
+                // به‌روزرسانی پیام موقت با پاسخ سرور - بدون ایجاد کالکشن جدید
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     try
                     {
                         // یافتن پیام موقت در کالکشن
-                        var tempMessage = Messages.FirstOrDefault(m => m.Id == tempId);
-                        if (tempMessage != null)
+                        int tempIndex = -1;
+                        for (int i = 0; i < Messages.Count; i++)
+                        {
+                            if (Messages[i].Id == tempId)
+                            {
+                                tempIndex = i;
+                                break;
+                            }
+                        }
+
+                        if (tempIndex >= 0)
                         {
                             if (serverMessage != null)
                             {
-                                // به‌روزرسانی پیام موقت با داده‌های سرور
-                                tempMessage.Id = serverMessage.Id;
-                                tempMessage.Status = Constants.MessageStatus.Sent;
+                                // به‌روزرسانی پیام موقت با داده‌های سرور (بدون حذف و اضافه مجدد)
+                                Messages[tempIndex].Id = serverMessage.Id;
+                                Messages[tempIndex].Status = Constants.MessageStatus.Sent;
 
                                 // اعلان تغییر خصوصیت برای به‌روزرسانی UI
-                                tempMessage.OnPropertyChanged(nameof(MessageModel.Id));
-                                tempMessage.OnPropertyChanged(nameof(MessageModel.Status));
+                                Messages[tempIndex].OnPropertyChanged(nameof(MessageModel.Id));
+                                Messages[tempIndex].OnPropertyChanged(nameof(MessageModel.Status));
 
                                 // به‌روزرسانی نگاشت‌ها
                                 _pendingMessagesById.TryRemove(tempId, out _);
@@ -559,9 +559,9 @@ namespace Solvix.Client.MVVM.ViewModels
                             }
                             else
                             {
-                                // علامت‌گذاری به عنوان ناموفق
-                                tempMessage.Status = Constants.MessageStatus.Failed;
-                                tempMessage.OnPropertyChanged(nameof(MessageModel.Status));
+                                // علامت‌گذاری به عنوان ناموفق (بدون حذف و اضافه مجدد)
+                                Messages[tempIndex].Status = Constants.MessageStatus.Failed;
+                                Messages[tempIndex].OnPropertyChanged(nameof(MessageModel.Status));
 
                                 // پاک کردن از نگاشت‌ها
                                 _pendingMessagesById.TryRemove(tempId, out _);
@@ -591,6 +591,7 @@ namespace Solvix.Client.MVVM.ViewModels
                     if (lastPendingMessage != null)
                     {
                         lastPendingMessage.Status = Constants.MessageStatus.Failed;
+                        lastPendingMessage.OnPropertyChanged(nameof(MessageModel.Status));
 
                         // پاک کردن از نگاشت‌ها اگر امکان‌پذیر است
                         if (lastPendingMessage.Id < 0)
