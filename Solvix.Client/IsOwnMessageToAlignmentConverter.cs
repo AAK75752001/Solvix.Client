@@ -61,6 +61,7 @@ namespace Solvix.Client
                                     return sentTextColor;
                                 return Colors.Black;
                             }
+
                             else
                             {
                                 if (Application.Current.Resources.TryGetValue("ReceivedMessageTextColor", out var receivedTextColor))
