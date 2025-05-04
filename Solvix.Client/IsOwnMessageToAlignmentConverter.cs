@@ -6,47 +6,36 @@ namespace Solvix.Client
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            bool isOwnMessage = false;
+            bool isOwnMessage = value is bool boolValue && boolValue;
 
-            // Conversión segura del valor
-            if (value is bool boolValue)
-            {
-                isOwnMessage = boolValue;
-            }
-
-            // Para conversión a LayoutOptions
             if (targetType == typeof(LayoutOptions))
             {
                 return isOwnMessage ? LayoutOptions.End : LayoutOptions.Start;
             }
 
-            // Para conversión a Color
             if (typeof(Color).IsAssignableFrom(targetType))
             {
-                // Si hay un parámetro, lo procesamos
                 if (parameter is string paramStr)
                 {
                     if (paramStr == "BgColor")
                     {
                         try
                         {
-                            // Intentar obtener colores de Resources
                             if (isOwnMessage)
                             {
-                                if (Application.Current.Resources.TryGetValue("SentMessageBubbleColor", out var sentColor))
-                                    return sentColor;
+                                if (Application.Current?.Resources?.TryGetValue("SentMessageBubbleColor", out var sentColor) == true)
+                                    return (Color)sentColor;
                                 return Colors.LightBlue;
                             }
                             else
                             {
-                                if (Application.Current.Resources.TryGetValue("ReceivedMessageBubbleColor", out var receivedColor))
-                                    return receivedColor;
+                                if (Application.Current?.Resources?.TryGetValue("ReceivedMessageBubbleColor", out var receivedColor) == true)
+                                    return (Color)receivedColor;
                                 return Colors.LightGray;
                             }
                         }
                         catch
                         {
-                            // Colores predeterminados en caso de error
                             return isOwnMessage ? Colors.LightBlue : Colors.LightGray;
                         }
                     }
@@ -54,30 +43,27 @@ namespace Solvix.Client
                     {
                         try
                         {
-                            // Intentar obtener colores de Resources
                             if (isOwnMessage)
                             {
-                                if (Application.Current.Resources.TryGetValue("SentMessageTextColor", out var sentTextColor))
-                                    return sentTextColor;
+                                if (Application.Current?.Resources?.TryGetValue("SentMessageTextColor", out var sentTextColor) == true)
+                                    return (Color)sentTextColor;
                                 return Colors.Black;
                             }
 
                             else
                             {
-                                if (Application.Current.Resources.TryGetValue("ReceivedMessageTextColor", out var receivedTextColor))
-                                    return receivedTextColor;
+                                if (Application.Current?.Resources?.TryGetValue("ReceivedMessageTextColor", out var receivedTextColor) == true)
+                                    return (Color)receivedTextColor;
                                 return Colors.Black;
                             }
                         }
                         catch
                         {
-                            // Color predeterminado para texto
                             return Colors.Black;
                         }
                     }
                 }
 
-                // Valor por defecto para Color
                 return Colors.Gray;
             }
 

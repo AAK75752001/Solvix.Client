@@ -23,7 +23,7 @@
             public static string GetChat = "chat";  // + /{chatId}
             public static string StartChat = "chat/start";
             public static string GetMessages = "chat";  // + /{chatId}/messages
-            public static string SendMessage = "chat/message";
+            public static string SendMessage = "chat/send-message";
             public static string MarkRead = "chat";  // + /{chatId}/mark-read
 
             // User Endpoints
