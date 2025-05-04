@@ -9,7 +9,7 @@
 
     <ShellContent
         Title="Chat"
-        ContentTemplate="{DataTemplate views:MainPage}"
+        ContentTemplate="{DataTemplate views:LoginPage}"
         Route="MainPage" />
 
 </Shell>

@@ -9,7 +9,6 @@ namespace Solvix.Client
     public partial class App : Application
     {
         private readonly IAuthService _authService;
-        private readonly ISettingsService _settingsService;
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<App> _logger;
         private readonly SemaphoreSlim _initLock = new SemaphoreSlim(1, 1);
@@ -17,7 +16,6 @@ namespace Solvix.Client
 
         public App(
             IAuthService authService,
-            ISettingsService settingsService,
             IServiceProvider serviceProvider,
             ILogger<App> logger)
         {
@@ -29,7 +27,6 @@ namespace Solvix.Client
                 InitializeComponent();
 
                 _authService = authService;
-                _settingsService = settingsService;
                 _serviceProvider = serviceProvider;
 
                 // صفحه بارگذاری را بلافاصله نمایش دهید
@@ -190,8 +187,6 @@ namespace Solvix.Client
         {
             try
             {
-                var theme = _settingsService.GetTheme();
-                _logger.LogInformation("Applying theme: {Theme}", theme);
 
                 // دریافت دیکشنری‌های قالب ادغام‌شده فعلی (اگر وجود دارد)
                 var themeDict = Application.Current.Resources.MergedDictionaries
@@ -204,16 +199,7 @@ namespace Solvix.Client
                 }
 
                 // افزودن دیکشنری قالب جدید
-                if (string.IsNullOrEmpty(theme) || theme == Constants.Themes.Light)
-                {
-                    _logger.LogInformation("Adding Light theme resources");
-                    Application.Current.Resources.MergedDictionaries.Add(new LightThemeResources());
-                }
-                else
-                {
-                    _logger.LogInformation("Adding Dark theme resources");
-                    Application.Current.Resources.MergedDictionaries.Add(new DarkThemeResources());
-                }
+              
             }
             catch (Exception ex)
             {

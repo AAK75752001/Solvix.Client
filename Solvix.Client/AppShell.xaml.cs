@@ -15,10 +15,7 @@ namespace Solvix.Client
 
             // Instead of registering ChatPage directly, we'll use a parameterized route format
             // This allows each chat ID to have a unique route path
-            Routing.RegisterRoute($"{nameof(ChatPage)}", typeof(ChatPage));
-
-            Routing.RegisterRoute(nameof(NewChatPage), typeof(NewChatPage));
-            Routing.RegisterRoute(nameof(SettingsPage), typeof(SettingsPage));
+         
 
             // Shell settings
             Shell.SetTabBarIsVisible(this, false);

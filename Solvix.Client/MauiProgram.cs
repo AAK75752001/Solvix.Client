@@ -68,16 +68,13 @@ namespace Solvix.Client
             // Core services
             services.AddSingleton<ISecureStorageService, SecureStorageService>();
             services.AddSingleton<IConnectivityService, ConnectivityService>();
-            services.AddSingleton<ISettingsService, SettingsService>();
             services.AddSingleton<IToastService, ImprovedToastService>();
 
             // API-related services
             services.AddSingleton<IApiService, ApiService>();
             services.AddSingleton<IAuthService, AuthService>();
-            services.AddSingleton<ISignalRService, SignalRService>();
 
             // Domain services
-            services.AddSingleton<IChatService, ChatService>();
             services.AddSingleton<IUserService, UserService>();
         }
 
@@ -88,11 +85,7 @@ namespace Solvix.Client
             services.AddTransient<RegisterViewModel>();
 
             // Main view models
-            services.AddTransient<MainViewModel>();
-            services.AddTransient<ChatListViewModel>();
-            services.AddTransient<ChatViewModel>();
-            services.AddTransient<NewChatViewModel>();
-            services.AddTransient<SettingsViewModel>();
+        
         }
 
         private static void RegisterViews(IServiceCollection services)
@@ -102,11 +95,7 @@ namespace Solvix.Client
             services.AddTransient<RegisterPage>();
 
             // Main views
-            services.AddTransient<MVVM.Views.MainPage>();
-            services.AddTransient<ChatListPage>();
-            services.AddTransient<ChatPage>();
-            services.AddTransient<NewChatPage>();
-            services.AddTransient<SettingsPage>();
+           
         }
     }
 }
