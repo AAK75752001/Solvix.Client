@@ -523,8 +523,10 @@ namespace Solvix.Client.MVVM.ViewModels
                 // ارسال پیام به سرور با شناسه همبستگی
                 var serverMessage = await _chatService.SendMessageWithCorrelationAsync(chatGuid, messageText, correlationId);
 
-                // به‌روزرسانی پیام موقت با پاسخ سرور - بدون ایجاد کالکشن جدید
-                await MainThread.InvokeOnMainThreadAsync(() =>
+                if (serverMessage != null)
+                {
+                    // به‌روزرسانی پیام موقت با پاسخ سرور - بدون ایجاد کالکشن جدید
+                    await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     try
                     {
@@ -541,42 +543,58 @@ namespace Solvix.Client.MVVM.ViewModels
 
                         if (tempIndex >= 0)
                         {
-                            if (serverMessage != null)
-                            {
-                                // به‌روزرسانی پیام موقت با داده‌های سرور (بدون حذف و اضافه مجدد)
-                                Messages[tempIndex].Id = serverMessage.Id;
-                                Messages[tempIndex].Status = Constants.MessageStatus.Sent;
 
-                                // اعلان تغییر خصوصیت برای به‌روزرسانی UI
-                                Messages[tempIndex].OnPropertyChanged(nameof(MessageModel.Id));
-                                Messages[tempIndex].OnPropertyChanged(nameof(MessageModel.Status));
+                            // به‌روزرسانی پیام موقت با داده‌های سرور (بدون حذف و اضافه مجدد)
+                            Messages[tempIndex].Id = serverMessage.Id;
+                            Messages[tempIndex].Status = Constants.MessageStatus.Sent;
 
-                                // به‌روزرسانی نگاشت‌ها
-                                _pendingMessagesById.TryRemove(tempId, out _);
-                                _pendingMessagesByCorrelation[correlationId] = serverMessage.Id;
+                            // اعلان تغییر خصوصیت برای به‌روزرسانی UI
+                            Messages[tempIndex].OnPropertyChanged(nameof(MessageModel.Id));
+                            Messages[tempIndex].OnPropertyChanged(nameof(MessageModel.Status));
 
-                                _logger.LogInformation("Updated message from temp ID {TempId} to server ID {ServerId}", tempId, serverMessage.Id);
-                            }
-                            else
-                            {
-                                // علامت‌گذاری به عنوان ناموفق (بدون حذف و اضافه مجدد)
-                                Messages[tempIndex].Status = Constants.MessageStatus.Failed;
-                                Messages[tempIndex].OnPropertyChanged(nameof(MessageModel.Status));
+                            // به‌روزرسانی نگاشت‌ها
+                            _pendingMessagesById.TryRemove(tempId, out _);
+                            _pendingMessagesByCorrelation[correlationId] = serverMessage.Id;
 
-                                // پاک کردن از نگاشت‌ها
-                                _pendingMessagesById.TryRemove(tempId, out _);
-                                _pendingMessagesByCorrelation.TryRemove(correlationId, out _);
-
-                                _logger.LogWarning("Message sending failed, marked as failed");
-                            }
+                            _logger.LogInformation("Updated message from temp ID {TempId} to server ID {ServerId}", tempId, serverMessage.Id);
                         }
                     }
+
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Error updating temp message with server response");
                     }
                 });
+                }
+                else
+                {
+                    // علامت‌گذاری به عنوان ناموفق
+                    await MainThread.InvokeOnMainThreadAsync(() =>
+                    {
+                        var tempMessageIndex = -1;
+                        for (int i = 0; i < Messages.Count; i++)
+                        {
+                            if (Messages[i].Id == tempId)
+                            {
+                                tempMessageIndex = i;
+                                break;
+                            }
+                        }
+
+                        if (tempMessageIndex >= 0)
+                        {
+                            Messages[tempMessageIndex].Status = Constants.MessageStatus.Failed;
+                            Messages[tempMessageIndex].OnPropertyChanged(nameof(MessageModel.Status));
+
+                            _pendingMessagesById.TryRemove(tempId, out _);
+                            _pendingMessagesByCorrelation.TryRemove(correlationId, out _);
+
+                            _logger.LogWarning("Message sending failed, marked as failed");
+                        }
+                    });
+                }
             }
+
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in SendMessageAsync: {Message}", ex.Message);
@@ -664,29 +682,28 @@ namespace Solvix.Client.MVVM.ViewModels
                     // تعیین اینکه آیا پیام مال خود کاربر است
                     message.IsOwnMessage = message.SenderId == _currentUserId;
 
-                    // برای پیام‌های خود کاربر، بررسی اینکه آیا این پیام تکراری است یا به‌روزرسانی یک پیام موقت
-                    if (message.IsOwnMessage && message.Id > 0)
+                    bool isDuplicate = false;
+
+                    var existingMessageById = Messages.FirstOrDefault(m => m.Id == message.Id && m.Id > 0);
+                    if (existingMessageById != null)
                     {
-                        // بررسی اینکه آیا پیامی با این ID قبلاً دریافت شده است
-                        var existingMessage = Messages.FirstOrDefault(m => m.Id == message.Id);
-                        if (existingMessage != null)
-                        {
-                            _logger.LogInformation("Duplicate message with ID {MessageId} ignored", message.Id);
-                            return;
-                        }
+                        _logger.LogInformation("Duplicate message with ID {MessageId} ignored", message.Id);
+                        isDuplicate = true;
+                    }
+                    // برای پیام‌های خود کاربر، بررسی اینکه آیا این پیام تکراری است یا به‌روزرسانی یک پیام موقت
+                    if (!isDuplicate && message.IsOwnMessage && message.Id > 0)
+                    {
 
                         // جستجوی یک پیام موقت مطابق از طریق CorrelationId یا محتوا و زمان
-                        var matchingTempMessages = Messages
-                            .Where(m => m.Id < 0 && m.IsOwnMessage && (
-                                (!string.IsNullOrEmpty(message.CorrelationId) && m.CorrelationId == message.CorrelationId) ||
-                                (m.Content == message.Content && Math.Abs((m.SentAt - message.SentAt).TotalMinutes) < 2)
-                            ))
-                            .ToList();
+                        var tempMessage = Messages.FirstOrDefault(m =>
+                    m.Id < 0 &&
+                    m.IsOwnMessage &&
+                    ((!string.IsNullOrEmpty(message.CorrelationId) && m.CorrelationId == message.CorrelationId) ||
+                     (m.Content == message.Content && Math.Abs((m.SentAt - message.SentAt).TotalMinutes) < 2))
+                );
 
-                        if (matchingTempMessages.Any())
+                        if (tempMessage != null)
                         {
-                            // به‌روزرسانی پیام موقت با اطلاعات پیام سرور
-                            var tempMessage = matchingTempMessages.First();
                             var tempIndex = Messages.IndexOf(tempMessage);
 
                             if (tempIndex >= 0)
@@ -702,7 +719,6 @@ namespace Solvix.Client.MVVM.ViewModels
                                 }
 
                                 // به‌روزرسانی پیام در لیست - بدون جایگزینی عنصر
-                                // بجای جایگزینی عنصر، خصوصیت‌های آن را به‌روزرسانی می‌کنیم
                                 Messages[tempIndex].Id = message.Id;
                                 Messages[tempIndex].SentAt = message.SentAt;
                                 Messages[tempIndex].Status = Constants.MessageStatus.Delivered;
@@ -712,21 +728,19 @@ namespace Solvix.Client.MVVM.ViewModels
                                 Messages[tempIndex].OnPropertyChanged(nameof(MessageModel.SentAt));
                                 Messages[tempIndex].OnPropertyChanged(nameof(MessageModel.Status));
 
-                                return;
+                                isDuplicate = true;
                             }
                         }
                     }
 
                     // اگر این یک پیام جدید است (نه تکراری و نه به‌روزرسانی)، آن را اضافه کنیم
-                    if (!Messages.Any(m => m.Id == message.Id && m.Id > 0))
+                    if (!isDuplicate)
                     {
                         _logger.LogInformation("Adding new message {MessageId} to collection", message.Id);
 
                         // اضافه کردن به کالکشن موجود - بدون ایجاد کالکشن جدید
                         Messages.Add(message);
                         NoMessages = false;
-
-                        // اسکرول به آخرین پیام - باید منطق مربوطه در XAML هم تنظیم شود
 
                         // اگر این پیام از طرف مقابل است، به عنوان خوانده شده علامت‌گذاری کنیم
                         if (!message.IsOwnMessage)

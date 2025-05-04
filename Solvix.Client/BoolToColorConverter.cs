@@ -6,10 +6,8 @@ namespace Solvix.Client
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            // Valor predeterminado
             bool condition = false;
 
-            // Intentar convertir el valor a bool
             if (value is bool boolValue)
             {
                 condition = boolValue;
@@ -18,16 +16,9 @@ namespace Solvix.Client
             {
                 bool.TryParse(strValue, out condition);
             }
-            // Si el valor es null, tratar como false
-            else if (value == null)
-            {
-                condition = false;
-            }
 
-            // Si la condición es true y hay un parámetro
             if (condition && parameter is string paramStr)
             {
-                // Asignar colores según el parámetro
                 return paramStr switch
                 {
                     "Error" => Colors.Red,
@@ -38,12 +29,11 @@ namespace Solvix.Client
                 };
             }
 
-            // Color predeterminado
             try
             {
-                if (Application.Current.Resources.TryGetValue("SecondaryTextColor", out var color))
+                if (Application.Current?.Resources?.TryGetValue("SecondaryTextColor", out var color) == true)
                 {
-                    return color;
+                    return (Color)color;
                 }
             }
             catch { }
