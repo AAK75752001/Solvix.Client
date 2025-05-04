@@ -151,8 +151,6 @@ namespace Solvix.Client.Core.Services
                 // استفاده از تایم‌اوت برای جلوگیری از انتظار طولانی
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
 
-                // اینجا باید از signature method منطبق با سمت سرور استفاده کنید
-                // اگر سرور شما SendToChat را با سه پارامتر پشتیبانی نمی‌کند، باید آن را اضافه کنید یا از دو پارامتر استفاده کنید
                 await _hubConnection.InvokeAsync("SendToChat", chatId, message, correlationId, cts.Token);
 
                 _logger.LogInformation("Message sent via SignalR with correlationId {CorrelationId}", correlationId);
