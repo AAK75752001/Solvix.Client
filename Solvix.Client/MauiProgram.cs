@@ -14,32 +14,21 @@ namespace Solvix.Client
             var builder = MauiApp.CreateBuilder();
             builder
                 .UseMauiApp<App>()
-                .UseMauiCommunityToolkit() // Properly initialize CommunityToolkit
+                .UseMauiCommunityToolkit()
                 .ConfigureFonts(fonts =>
                 {
-                    // Register system fonts as fallbacks first
                     fonts.AddFont("Segoe UI", "SegoeUI");
 
-                    // Try to add the app's custom fonts
                     try
                     {
                         fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
                         fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
+                        fonts.AddFont("MaterialIcons-Regular.ttf", "MaterialIcons");
+                        fonts.AddFont("Vazir.ttf", "Vazirmatn");
                     }
                     catch (Exception ex)
                     {
                         Console.WriteLine($"Error loading OpenSans fonts: {ex.Message}");
-                        // App will fall back to system fonts
-                    }
-
-                    // Material Icons font - critical for UI 
-                    try
-                    {
-                        fonts.AddFont("MaterialIcons-Regular.ttf", "MaterialIcons");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Error loading MaterialIcons font: {ex.Message}");
                     }
                 });
 
@@ -69,6 +58,8 @@ namespace Solvix.Client
             services.AddSingleton<ISecureStorageService, SecureStorageService>();
             services.AddSingleton<IConnectivityService, ConnectivityService>();
             services.AddSingleton<IToastService, ImprovedToastService>();
+            services.AddSingleton<INavigationService, NavigationService>();
+            services.AddScoped<IChatService, ChatService>();
 
             // API-related services
             services.AddSingleton<IApiService, ApiService>();
@@ -82,18 +73,22 @@ namespace Solvix.Client
         {
             // Auth view models
             services.AddTransient<LoginViewModel>();
+            services.AddTransient<ChatListViewModel>();
+            services.AddTransient<ChatPageViewModel>();
 
             // Main view models
-        
+
         }
 
         private static void RegisterViews(IServiceCollection services)
         {
             // Auth views
             services.AddTransient<LoginPage>();
+            services.AddTransient<ChatListPage>();
+            services.AddTransient<ChatPage>();
 
             // Main views
-           
+
         }
     }
 }

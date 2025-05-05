@@ -12,12 +12,7 @@
             </ResourceDictionary.MergedDictionaries>
 
             <!-- App-wide converters -->
-            <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
-            <local:InverseBoolConverter x:Key="InverseBoolConverter" />
-            <local:StringToBoolConverter x:Key="StringToBoolConverter" />
-            <local:DateTimeToFormattedStringConverter x:Key="DateTimeToFormattedStringConverter" />
-            <local:MessageStatusToIconConverter x:Key="MessageStatusToIconConverter" />
-            <local:IsOwnMessageToAlignmentConverter x:Key="IsOwnMessageToAlignmentConverter" />
+            
         </ResourceDictionary>
     </Application.Resources>
 </Application>

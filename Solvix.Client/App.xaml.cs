@@ -1,8 +1,8 @@
 ﻿using Microsoft.Extensions.Logging;
-using Solvix.Client.Core;
 using Solvix.Client.Core.Interfaces;
 using Solvix.Client.MVVM.Views;
 using Solvix.Client.Resources.Themes;
+using Microsoft.Maui.Controls;
 
 namespace Solvix.Client
 {
@@ -11,210 +11,84 @@ namespace Solvix.Client
         private readonly IAuthService _authService;
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<App> _logger;
-        private readonly SemaphoreSlim _initLock = new SemaphoreSlim(1, 1);
-        private bool _isInitializing = false;
 
         public App(
             IAuthService authService,
             IServiceProvider serviceProvider,
             ILogger<App> logger)
         {
-            try
-            {
-                _logger = logger;
-                _logger.LogInformation("Starting app initialization");
+            InitializeComponent();
 
-                InitializeComponent();
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _authService = authService ?? throw new ArgumentNullException(nameof(authService));
+            _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
 
-                _authService = authService;
-                _serviceProvider = serviceProvider;
+            ApplyTheme();
 
-                // صفحه بارگذاری را بلافاصله نمایش دهید
-                MainPage = new ContentPage
-                {
-                    BackgroundColor = Colors.White,
-                    Content = new ActivityIndicator
-                    {
-                        IsRunning = true,
-                        HorizontalOptions = LayoutOptions.Center,
-                        VerticalOptions = LayoutOptions.Center,
-                        Color = Colors.Purple
-                    }
-                };
-
-                // اعمال قالب
-                ApplyTheme();
-            }
-            catch (Exception ex)
-            {
-                logger.LogError(ex, "Critical error in App constructor");
-
-                // رابط کاربری پشتیبان در صورت بروز خطای اساسی
-                MainPage = new ContentPage
-                {
-                    BackgroundColor = Colors.White,
-                    Content = new VerticalStackLayout
-                    {
-                        VerticalOptions = LayoutOptions.Center,
-                        HorizontalOptions = LayoutOptions.Center,
-                        Children =
-                        {
-                            new Label
-                            {
-                                Text = "Failed to start application",
-                                FontSize = 18,
-                                HorizontalOptions = LayoutOptions.Center
-                            },
-                            new Label
-                            {
-                                Text = ex.Message,
-                                FontSize = 14,
-                                HorizontalOptions = LayoutOptions.Center,
-                                Margin = new Thickness(20, 10, 20, 0)
-                            }
-                        }
-                    }
-                };
-            }
+            SetInitialPage();
         }
 
         protected override void OnStart()
         {
             base.OnStart();
-            _logger.LogInformation("App OnStart");
-
-            // برنامه اصلی برای راه‌اندازی - در رشته رابط کاربری اجرا می‌شود
-            SetInitialPage();
+            _logger.LogInformation("App OnStart entered.");
         }
 
         private void SetInitialPage()
         {
             try
             {
-                _logger.LogInformation("Setting initial page");
-                bool isLoggedIn = false;
-
-                try
-                {
-                    isLoggedIn = _authService.IsLoggedIn();
-                    _logger.LogInformation("User logged in: {IsLoggedIn}", isLoggedIn);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error checking login status");
-                    isLoggedIn = false;
-                }
+                _logger.LogInformation("SetInitialPage logic running...");
+                bool isLoggedIn = _authService.IsLoggedIn();
+                _logger.LogInformation("User logged in status check: {IsLoggedIn}", isLoggedIn);
 
                 if (isLoggedIn)
                 {
-                    _logger.LogInformation("User is logged in, navigating to main app");
+                    _logger.LogInformation("User is logged in. Setting MainPage to AppShell.");
                     MainPage = new AppShell();
                 }
                 else
                 {
-                    _logger.LogInformation("User is not logged in, navigating to login");
-
-                    try
+                    _logger.LogInformation("User is not logged in. Setting MainPage to LoginPage within NavigationPage.");
+                    var loginPage = _serviceProvider.GetService<LoginPage>();
+                    if (loginPage != null)
                     {
-                        var loginPage = _serviceProvider.GetService<LoginPage>();
-                        if (loginPage != null)
-                        {
-                            MainPage = new NavigationPage(loginPage);
-                        }
-                        else
-                        {
-                            _logger.LogError("Failed to resolve LoginPage from service provider");
-
-                            // صفحه خطای ساده به جای تلاش برای ایجاد مستقیم صفحه
-                            MainPage = new ContentPage
-                            {
-                                Content = new Label
-                                {
-                                    Text = "Error: Could not create login page",
-                                    HorizontalOptions = LayoutOptions.Center,
-                                    VerticalOptions = LayoutOptions.Center
-                                }
-                            };
-                        }
+                        var navPage = new NavigationPage(loginPage) { BarBackgroundColor = Colors.Transparent };
+                        NavigationPage.SetHasNavigationBar(navPage, false);
+                        MainPage = navPage;
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        _logger.LogError(ex, "Error creating login page");
-
-                        // آخرین راه‌حل - ایجاد یک صفحه خطای ساده
-                        MainPage = new ContentPage
-                        {
-                            Content = new Label
-                            {
-                                Text = "Error loading login page: " + ex.Message,
-                                HorizontalOptions = LayoutOptions.Center,
-                                VerticalOptions = LayoutOptions.Center
-                            }
-                        };
+                        _logger.LogError("Failed to resolve LoginPage.");
+                        MainPage = new ContentPage { Content = new Label { Text = "Error loading login page." } };
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Critical error setting initial page");
-
-                // رابط کاربری پشتیبان
-                MainPage = new ContentPage
-                {
-                    Content = new Label
-                    {
-                        Text = "Error starting application: " + ex.Message,
-                        HorizontalOptions = LayoutOptions.Center,
-                        VerticalOptions = LayoutOptions.Center
-                    }
-                };
+                _logger.LogError(ex, "Critical error in SetInitialPage.");
+                MainPage = new ContentPage { Content = new Label { Text = $"Critical Error: {ex.Message}" } };
             }
-        }
-
-        protected override void OnSleep()
-        {
-            _logger.LogInformation("App OnSleep");
-            base.OnSleep();
-        }
-
-        protected override void OnResume()
-        {
-            _logger.LogInformation("App OnResume");
-            base.OnResume();
         }
 
         private void ApplyTheme()
         {
             try
             {
-
-                // دریافت دیکشنری‌های قالب ادغام‌شده فعلی (اگر وجود دارد)
-                var themeDict = Application.Current.Resources.MergedDictionaries
-                    .FirstOrDefault(d => d is LightThemeResources || d is DarkThemeResources);
-
-                // حذف دیکشنری قالب قدیمی در صورت یافتن
-                if (themeDict != null)
-                {
-                    Application.Current.Resources.MergedDictionaries.Remove(themeDict);
-                }
-
-                // افزودن دیکشنری قالب جدید
-              
+                _logger.LogDebug("Applying application theme...");
+                var currentDictionaries = Application.Current?.Resources?.MergedDictionaries;
+                if (currentDictionaries == null) return;
+                var existingThemes = currentDictionaries.OfType<ResourceDictionary>()
+                                                     .Where(d => d is LightThemeResources || d is DarkThemeResources)
+                                                     .ToList();
+                foreach (var theme in existingThemes) { currentDictionaries.Remove(theme); }
+                currentDictionaries.Add(new LightThemeResources());
+                _logger.LogDebug("Applied LightThemeResources.");
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error applying theme");
-
-                // بازگشت به قالب روشن در صورت بروز خطا
-                try
-                {
-                    Application.Current.Resources.MergedDictionaries.Add(new LightThemeResources());
-                }
-                catch (Exception innerEx)
-                {
-                    _logger.LogError(innerEx, "Critical error applying fallback theme");
-                }
-            }
+            catch (Exception ex) { _logger.LogError(ex, "Error applying theme in App constructor."); }
         }
+        protected override void OnSleep() { _logger.LogInformation("App entering sleep state."); base.OnSleep(); }
+        protected override void OnResume() { _logger.LogInformation("App resuming from sleep state."); base.OnResume(); }
+
     }
 }

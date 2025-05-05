@@ -4,8 +4,8 @@ using Solvix.Client.Core.Models;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.ComponentModel.DataAnnotations;
-using System.Text.RegularExpressions;
-using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+
 
 namespace Solvix.Client.MVVM.ViewModels
 {
@@ -13,12 +13,14 @@ namespace Solvix.Client.MVVM.ViewModels
     {
         private readonly IAuthService _authService;
         private readonly IToastService _toastService;
+        private readonly ILogger<LoginViewModel> _logger;
 
-        // --- وضعیت‌های UI ---
         [ObservableProperty]
+        [NotifyCanExecuteChangedFor(nameof(SubmitCommand))]
         private bool _isLoading;
 
         [ObservableProperty]
+        [NotifyCanExecuteChangedFor(nameof(SubmitCommand))]
         private bool _isPhoneNumberLocked;
 
         [ObservableProperty]
@@ -30,7 +32,6 @@ namespace Solvix.Client.MVVM.ViewModels
         [ObservableProperty]
         private bool _isPasswordVisible;
 
-        // --- فیلدهای ورودی ---
         [ObservableProperty]
         [Required(ErrorMessage = "شماره تلفن الزامی است.")]
         [RegularExpression(Constants.Validation.PhoneRegex, ErrorMessage = "فرمت شماره تلفن نامعتبر است.")]
@@ -44,33 +45,42 @@ namespace Solvix.Client.MVVM.ViewModels
         private string _password = string.Empty;
 
         [ObservableProperty]
+        [Required(ErrorMessage = "وارد کردن نام الزامی است.")]
         [NotifyCanExecuteChangedFor(nameof(SubmitCommand))]
         private string? _firstName;
 
         [ObservableProperty]
+        [Required(ErrorMessage = "وارد کردن نام خانوادگی الزامی است.")]
         [NotifyCanExecuteChangedFor(nameof(SubmitCommand))]
         private string? _lastName;
 
-        // --- وضعیت فعلی ViewModel ---
         public enum LoginState { EnteringPhone, EnteringPassword, Registering }
 
         [ObservableProperty]
+        [NotifyPropertyChangedFor(nameof(SubmitButtonText))]
+        [NotifyCanExecuteChangedFor(nameof(SubmitCommand))]
         private LoginState _currentState = LoginState.EnteringPhone;
 
-        // --- Constructor ---
-        public LoginViewModel(IAuthService authService, IToastService toastService)
+        public string SubmitButtonText => CurrentState switch
+        {
+            LoginState.EnteringPhone => "ادامه",
+            LoginState.EnteringPassword => "ورود",
+            LoginState.Registering => "ثبت نام",
+            _ => "تایید"
+        };
+
+        public LoginViewModel(IAuthService authService, IToastService toastService, ILogger<LoginViewModel> logger)
         {
             _authService = authService;
             _toastService = toastService;
-            ErrorsChanged += (s, e) => SubmitCommand.NotifyCanExecuteChanged();
+            _logger = logger;
         }
 
-        // --- دستورات (Commands) ---
         [RelayCommand(CanExecute = nameof(CanSubmit))]
         private async Task SubmitAsync()
         {
-            ValidateAllProperties();
-            if (HasErrors)
+            bool isValid = ValidateForCurrentState();
+            if (!isValid)
             {
                 var firstError = GetErrors().FirstOrDefault()?.ErrorMessage;
                 await _toastService.ShowToastAsync(firstError ?? "لطفا خطاهای فرم را برطرف کنید.", ToastType.Warning);
@@ -95,6 +105,7 @@ namespace Solvix.Client.MVVM.ViewModels
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Error in SubmitAsync");
                 await _toastService.ShowToastAsync($"خطا: {ex.Message}", ToastType.Error);
             }
             finally
@@ -106,22 +117,8 @@ namespace Solvix.Client.MVVM.ViewModels
         private bool CanSubmit()
         {
             if (IsLoading) return false;
-
-            ValidateAllProperties();
-
-            switch (CurrentState)
-            {
-                case LoginState.EnteringPhone:
-                    return !GetErrors(nameof(PhoneNumber)).Any() && !string.IsNullOrEmpty(PhoneNumber);
-                case LoginState.EnteringPassword:
-                    return !GetErrors(nameof(Password)).Any() && !string.IsNullOrEmpty(Password);
-                case LoginState.Registering:
-                    return !GetErrors(nameof(Password)).Any() && !string.IsNullOrEmpty(Password);
-                default:
-                    return false;
-            }
+            return !HasErrorsForCurrentState();
         }
-
 
         [RelayCommand]
         private void TogglePasswordVisibility() => IsPasswordVisible = !IsPasswordVisible;
@@ -135,7 +132,6 @@ namespace Solvix.Client.MVVM.ViewModels
         [RelayCommand]
         private void ChangePhoneNumber()
         {
-            // Reset state to enter phone number again
             PhoneNumber = string.Empty;
             Password = string.Empty;
             FirstName = string.Empty;
@@ -145,16 +141,20 @@ namespace Solvix.Client.MVVM.ViewModels
             ShowRegistrationSection = false;
             CurrentState = LoginState.EnteringPhone;
             ClearErrors();
-            SubmitCommand.NotifyCanExecuteChanged();
         }
 
-        // --- متدهای کمکی ---
         private async Task CheckPhoneAndProceedAsync()
         {
+            ClearErrors(nameof(Password));
+            ClearErrors(nameof(FirstName));
+            ClearErrors(nameof(LastName));
+
+            IsLoading = true;
+            IsPhoneNumberLocked = true;
+
             try
             {
                 var exists = await _authService.CheckPhoneExists(PhoneNumber);
-                IsPhoneNumberLocked = true;
                 ShowPasswordSection = true;
 
                 if (exists)
@@ -172,6 +172,7 @@ namespace Solvix.Client.MVVM.ViewModels
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Error in CheckPhoneAndProceedAsync for {PhoneNumber}", PhoneNumber);
                 await _toastService.ShowToastAsync($"خطا در بررسی شماره: {ex.Message}", ToastType.Error);
                 IsPhoneNumberLocked = false;
                 ShowPasswordSection = false;
@@ -180,8 +181,7 @@ namespace Solvix.Client.MVVM.ViewModels
             }
             finally
             {
-                // Trigger re-evaluation of CanExecute for the submit button
-                SubmitCommand.NotifyCanExecuteChanged();
+                IsLoading = false;
             }
         }
 
@@ -191,13 +191,22 @@ namespace Solvix.Client.MVVM.ViewModels
             if (user != null)
             {
                 await _toastService.ShowToastAsync($"خوش آمدید {user.DisplayName}!", ToastType.Success);
-                // Navigate to main page
-                Application.Current!.MainPage = new AppShell(); // Use non-null assertion if sure it's not null
+
+                try
+                {
+                    _logger.LogInformation("Setting MainPage to AppShell after successful login.");
+                    Application.Current!.MainPage = new AppShell();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error setting MainPage to AppShell after login.");
+                    await _toastService.ShowToastAsync("خطا در نمایش صفحه اصلی.", ToastType.Error);
+                }
             }
             else
             {
                 await _toastService.ShowToastAsync("ورود ناموفق. لطفا رمز عبور را بررسی کنید.", ToastType.Error);
-                // Password = string.Empty; // Optionally clear password field on failure
+                Password = string.Empty;
             }
         }
 
@@ -215,8 +224,17 @@ namespace Solvix.Client.MVVM.ViewModels
             if (user != null)
             {
                 await _toastService.ShowToastAsync("ثبت نام با موفقیت انجام شد!", ToastType.Success);
-                // Navigate to main page
-                Application.Current!.MainPage = new AppShell(); // Use non-null assertion
+
+                try
+                {
+                    _logger.LogInformation("Setting MainPage to AppShell after successful registration.");
+                    Application.Current!.MainPage = new AppShell();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error setting MainPage to AppShell after registration.");
+                    await _toastService.ShowToastAsync("خطا در نمایش صفحه اصلی.", ToastType.Error);
+                }
             }
             else
             {
@@ -224,8 +242,52 @@ namespace Solvix.Client.MVVM.ViewModels
             }
         }
 
-        // Helper for Validation Text
-        public string? GetFirstError(string propertyName)
-            => GetErrors(propertyName).FirstOrDefault()?.ErrorMessage;
+        private bool ValidateForCurrentState()
+        {
+            ClearErrors();
+            bool isValid = true;
+
+            if (!IsPhoneNumberLocked)
+            {
+                ValidateProperty(PhoneNumber, nameof(PhoneNumber));
+                if (GetErrors(nameof(PhoneNumber)).Any()) isValid = false;
+            }
+
+            if (CurrentState == LoginState.EnteringPassword || CurrentState == LoginState.Registering)
+            {
+                ValidateProperty(Password, nameof(Password));
+                if (GetErrors(nameof(Password)).Any()) isValid = false;
+            }
+
+            if (CurrentState == LoginState.Registering)
+            {
+                ValidateProperty(FirstName, nameof(FirstName));
+                if (GetErrors(nameof(FirstName)).Any()) isValid = false;
+
+                ValidateProperty(LastName, nameof(LastName));
+                if (GetErrors(nameof(LastName)).Any()) isValid = false;
+            }
+
+            SubmitCommand.NotifyCanExecuteChanged();
+            return isValid;
+        }
+
+        private bool HasErrorsForCurrentState()
+        {
+            if (CurrentState == LoginState.EnteringPhone)
+            {
+                return GetErrors(nameof(PhoneNumber)).Any();
+            }
+            if (CurrentState == LoginState.EnteringPassword)
+            {
+                return GetErrors(nameof(PhoneNumber)).Any() || GetErrors(nameof(Password)).Any();
+            }
+            if (CurrentState == LoginState.Registering)
+            {
+                return GetErrors(nameof(PhoneNumber)).Any() || GetErrors(nameof(Password)).Any()
+                    || GetErrors(nameof(FirstName)).Any() || GetErrors(nameof(LastName)).Any();
+            }
+            return true;
+        }
     }
 }

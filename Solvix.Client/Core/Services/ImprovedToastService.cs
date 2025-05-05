@@ -1,24 +1,27 @@
-﻿// Solvix.Client/Core/Services/ImprovedToastService.cs
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Layouts;
 using Solvix.Client.Core.Interfaces;
 using System.Collections.Concurrent;
+using Colors = Microsoft.Maui.Graphics.Colors;
+using Microsoft.Maui.Controls.Shapes;
+using System.Linq;
 
 namespace Solvix.Client.Core.Services
 {
     public class ImprovedToastService : IToastService
     {
         private readonly ILogger<ImprovedToastService> _logger;
-        private readonly ConcurrentQueue<ToastInfo> _pendingToasts = new ConcurrentQueue<ToastInfo>();
-        private bool _isProcessing = false;
-        private readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
+        private static readonly ConcurrentQueue<ToastInfo> _pendingToasts = new ConcurrentQueue<ToastInfo>();
+        private static bool _isProcessing = false;
+        private static readonly SemaphoreSlim _semaphore = new SemaphoreSlim(1, 1);
 
-        // Customizable toast appearance settings
-        private static int ToastDuration => 3000; // milliseconds
+        private static int ToastDuration => 3000;
         private static int ToastMargin => 20;
-        private static double ToastOpacity => 0.9;
-        private static double ToastCornerRadius => 10;
-        private static int ToastWidth => 300;
+        private static double ToastOpacity => 0.95;
+        private static double ToastCornerRadius => 25;
+        private static int MaxToastWidth => 350;
+        private static double ToastFontSize => 14;
+
 
         public ImprovedToastService(ILogger<ImprovedToastService> logger)
         {
@@ -29,47 +32,25 @@ namespace Solvix.Client.Core.Services
         {
             if (string.IsNullOrWhiteSpace(message))
             {
-                _logger.LogWarning("Toast message is empty or null - ignoring request");
+                _logger.LogWarning("پیام Toast خالی است - درخواست نادیده گرفته شد");
                 return;
             }
-
-            _logger.LogDebug("Toast requested: {Message} (Type: {ToastType})", message, type);
-
-            var toastInfo = new ToastInfo
-            {
-                Message = message,
-                Type = type,
-                CreatedAt = DateTime.UtcNow
-            };
-
+            _logger.LogDebug("درخواست Toast: {Message} (نوع: {ToastType})", message, type);
+            var toastInfo = new ToastInfo { Message = message, Type = type };
             _pendingToasts.Enqueue(toastInfo);
-
-            // Start processing if not already running
             await ProcessPendingToastsAsync();
         }
 
         private async Task ProcessPendingToastsAsync()
         {
-            // Use semaphore to ensure only one processing loop is active
-            if (!await _semaphore.WaitAsync(0))
-            {
-                return; // Another process is already handling the queue
-            }
-
+            if (!await _semaphore.WaitAsync(0)) return;
             try
             {
                 _isProcessing = true;
-
                 while (_pendingToasts.TryDequeue(out var toastInfo))
                 {
-                    try
-                    {
-                        await DisplayToastAsync(toastInfo);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error displaying toast: {Message}", toastInfo.Message);
-                    }
+                    try { await DisplayToastAsync(toastInfo); }
+                    catch (Exception ex) { _logger.LogError(ex, "خطا در نمایش Toast: {Message}", toastInfo.Message); }
                 }
             }
             finally
@@ -85,189 +66,165 @@ namespace Solvix.Client.Core.Services
             {
                 try
                 {
-                    // Get the current active page
                     var currentPage = GetCurrentPage();
-                    if (currentPage == null)
+                    if (currentPage is not ContentPage contentPage || contentPage.Content == null)
                     {
-                        _logger.LogWarning("Could not find current page to display toast");
+                        _logger.LogWarning("صفحه فعالی (ContentPage) برای نمایش Toast پیدا نشد");
                         return;
                     }
 
-                    // Create the toast frame
-                    var frame = new Frame
+                    var toastBorder = new Border
                     {
                         BackgroundColor = GetBackgroundColor(toastInfo.Type),
-                        CornerRadius = (float)ToastCornerRadius,
-                        Opacity = ToastOpacity,
-                        Padding = new Thickness(15, 10),
+                        StrokeShape = new RoundRectangle { CornerRadius = new CornerRadius(ToastCornerRadius) },
+                        Padding = new Thickness(16, 10),
                         Margin = new Thickness(ToastMargin),
-                        WidthRequest = ToastWidth,
                         HorizontalOptions = LayoutOptions.Center,
                         VerticalOptions = LayoutOptions.Start,
-                        TranslationY = -100 // Start offscreen for animation
+                        Opacity = 0,
+                        TranslationY = -50,
+                        MaximumWidthRequest = MaxToastWidth,
+                        Shadow = new Shadow { Brush = Colors.Black, Opacity = 0.3f, Radius = 8, Offset = new Point(4, 4) }
                     };
 
-                    // Create the toast content
-                    var label = new Label
+                    var contentLayout = new StackLayout
+                    {
+                        Orientation = StackOrientation.Horizontal,
+                        Spacing = 10,
+                        VerticalOptions = LayoutOptions.Center
+                    };
+                    contentLayout.Children.Add(new Label
+                    {
+                        Text = GetIcon(toastInfo.Type),
+                        TextColor = Colors.White,
+                        FontFamily = "MaterialIcons",
+                        FontSize = 18,
+                        VerticalTextAlignment = TextAlignment.Center
+                    });
+                    contentLayout.Children.Add(new Label
                     {
                         Text = toastInfo.Message,
                         TextColor = Colors.White,
-                        FontSize = 14,
-                        HorizontalOptions = LayoutOptions.Center,
-                        VerticalOptions = LayoutOptions.Center,
-                        HorizontalTextAlignment = TextAlignment.Center
-                    };
+                        FontSize = ToastFontSize,
+                        HorizontalOptions = LayoutOptions.StartAndExpand,
+                        VerticalTextAlignment = TextAlignment.Center,
+                        LineBreakMode = LineBreakMode.WordWrap
+                    });
+                    toastBorder.Content = contentLayout;
 
-                    frame.Content = label;
+                    var overlay = EnsureOverlayExists(contentPage);
+                    AbsoluteLayout.SetLayoutFlags(toastBorder, AbsoluteLayoutFlags.PositionProportional);
+                    AbsoluteLayout.SetLayoutBounds(toastBorder, new Rect(0.5, 0, AbsoluteLayout.AutoSize, AbsoluteLayout.AutoSize));
+                    overlay.Add(toastBorder);
 
-                    // Add the toast to the current page
-                    AbsoluteLayout.SetLayoutBounds(frame, new Rect(0.5, 0, -1, -1));
-                    AbsoluteLayout.SetLayoutFlags(frame, AbsoluteLayoutFlags.PositionProportional);
-
-                    // Create or find an AbsoluteLayout for toasts
-                    var toastLayout = EnsureToastLayoutExists(currentPage);
-                    toastLayout.Children.Add(frame);
-
-                    // Animate the toast in
-                    await frame.TranslateTo(0, 0, 300, Easing.SpringOut);
-
-                    // Wait for the toast duration
+                    await Task.WhenAll(
+                        toastBorder.FadeTo(ToastOpacity, 250, Easing.CubicOut),
+                        toastBorder.TranslateTo(0, ToastMargin, 250, Easing.CubicOut)
+                    );
                     await Task.Delay(ToastDuration);
+                    await Task.WhenAll(
+                        toastBorder.FadeTo(0, 250, Easing.CubicIn),
+                        toastBorder.TranslateTo(0, -50, 250, Easing.CubicIn)
+                    );
 
-                    // Animate the toast out
-                    await frame.TranslateTo(0, -100, 300, Easing.SpringIn);
-
-                    // Remove the toast
-                    toastLayout.Children.Remove(frame);
+                    overlay.Remove(toastBorder);
+                    if (!overlay.Children.Any())
+                    {
+                        RemoveOverlay(contentPage, overlay);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error in toast UI operations");
+                    _logger.LogError(ex, "خطا در عملیات UI مربوط به Toast");
                 }
             });
         }
 
-        private Page GetCurrentPage()
+        // --- متدهای کمکی ---
+        private Page? GetCurrentPage()
         {
-            if (Application.Current?.MainPage == null)
-                return null;
-
-            var mainPage = Application.Current.MainPage;
-
-            // Handle navigation page
-            if (mainPage is NavigationPage navPage && navPage.CurrentPage != null)
-                return navPage.CurrentPage;
-
-            // Handle Shell
-            if (mainPage is Shell shell && shell.CurrentPage != null)
-                return shell.CurrentPage;
-
-            // Handle TabbedPage
-            if (mainPage is TabbedPage tabbedPage && tabbedPage.CurrentPage != null)
-                return tabbedPage.CurrentPage;
-
+            var mainPage = Application.Current?.MainPage;
+            if (mainPage == null) return null;
+            if (mainPage is NavigationPage navPage) return navPage.CurrentPage;
+            if (mainPage is Shell shell) return shell.CurrentPage;
+            if (mainPage is TabbedPage tabbedPage) return tabbedPage.CurrentPage;
             return mainPage;
         }
 
-        private Color GetBackgroundColor(ToastType type)
+        private Color GetBackgroundColor(ToastType type) => type switch
         {
-            return type switch
-            {
-                ToastType.Success => Color.FromArgb("#1E8E3E"), // Green
-                ToastType.Warning => Color.FromArgb("#F9A825"), // Amber
-                ToastType.Error => Color.FromArgb("#D93025"),   // Red
-                _ => Color.FromArgb("#1A73E8")                  // Blue for Info
-            };
-        }
+            ToastType.Success => Color.FromArgb("#1E8E3E"),
+            ToastType.Warning => Color.FromArgb("#F9A825"),
+            ToastType.Error => Color.FromArgb("#D93025"),
+            _ => Color.FromArgb("#1A73E8")
+        };
+        private string GetIcon(ToastType type) => type switch
+        {
+            ToastType.Success => "check_circle",
+            ToastType.Warning => "warning",
+            ToastType.Error => "error",
+            _ => "info"
+        };
+        private const string OverlayStyleId = "ToastOverlayAbsoluteLayout";
 
-        private AbsoluteLayout EnsureToastLayoutExists(Page page)
+        private AbsoluteLayout EnsureOverlayExists(ContentPage page)
         {
-            // Look for existing toast layout
-            var toastLayout = FindExistingToastLayout(page);
-            if (toastLayout != null)
+            if (page.Content is Grid baseGrid && baseGrid.Children.OfType<AbsoluteLayout>().FirstOrDefault(al => al.StyleId == OverlayStyleId) is AbsoluteLayout existingOverlay)
             {
-                return toastLayout;
+                baseGrid.Children.Remove(existingOverlay);
+                baseGrid.Children.Add(existingOverlay);
+                return existingOverlay;
             }
 
-            // Create a new toast layout
-            toastLayout = new AbsoluteLayout
+            var overlay = new AbsoluteLayout { StyleId = OverlayStyleId, InputTransparent = true };
+
+            if (page.Content is Grid currentGrid)
             {
-                StyleId = "ToastLayout",
-                InputTransparent = true, // Let input events pass through
-                HorizontalOptions = LayoutOptions.Fill,
-                VerticalOptions = LayoutOptions.Fill
-            };
-
-            // Add the toast layout as an overlay
-            if (page is ContentPage contentPage)
-            {
-                var originalContent = contentPage.Content;
-
-                // If the content is null, create a Grid with just the toast layout
-                if (originalContent == null)
-                {
-                    contentPage.Content = new Grid
-                    {
-                        Children = { toastLayout }
-                    };
-                    return toastLayout;
-                }
-
-                // If the content is already a Grid, add the toast layout to it
-                if (originalContent is Grid grid)
-                {
-                    // Set the toast layout to span all rows and columns
-                    if (grid.RowDefinitions.Count > 0)
-                    {
-                        Grid.SetRowSpan(toastLayout, grid.RowDefinitions.Count);
-                    }
-                    if (grid.ColumnDefinitions.Count > 0)
-                    {
-                        Grid.SetColumnSpan(toastLayout, grid.ColumnDefinitions.Count);
-                    }
-
-                    grid.Children.Add(toastLayout);
-                    return toastLayout;
-                }
-
-                // Wrap the original content in a Grid with the toast layout
-                var wrapperGrid = new Grid
-                {
-                    Children = { originalContent, toastLayout }
-                };
-                contentPage.Content = wrapperGrid;
+                Grid.SetRowSpan(overlay, currentGrid.RowDefinitions.Count > 0 ? currentGrid.RowDefinitions.Count : 1);
+                Grid.SetColumnSpan(overlay, currentGrid.ColumnDefinitions.Count > 0 ? currentGrid.ColumnDefinitions.Count : 1);
+                currentGrid.Children.Add(overlay);
             }
-
-            return toastLayout;
+            else
+            {
+                var originalContent = page.Content;
+                var newGrid = new Grid();
+                if (originalContent != null) { newGrid.Children.Add(originalContent); }
+                newGrid.Children.Add(overlay);
+                page.Content = newGrid;
+            }
+            return overlay;
         }
 
-        private AbsoluteLayout FindExistingToastLayout(Page page)
+        private void RemoveOverlay(ContentPage page, AbsoluteLayout overlay)
         {
-            if (page is ContentPage contentPage)
+            if (overlay.Parent is Grid parentGrid)
             {
-                var content = contentPage.Content;
-
-                // If content is a Grid, search for the toast layout
-                if (content is Grid grid)
+                try
                 {
-                    foreach (var child in grid.Children)
-                    {
-                        if (child is AbsoluteLayout layout && layout.StyleId == "ToastLayout")
-                        {
-                            return layout;
-                        }
-                    }
+                    parentGrid.Children.Remove(overlay);
+                    _logger.LogDebug("Toast overlay removed from parent Grid.");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error removing toast overlay from its parent Grid.");
                 }
             }
-
-            return null;
+            else if (page.Content == overlay)
+            {
+                page.Content = null;
+                _logger.LogWarning("Toast overlay was the direct content of the page and is now removed.");
+            }
+            else
+            {
+                _logger.LogWarning("Could not find the parent Grid for the toast overlay to remove it.");
+            }
         }
+       
 
         private class ToastInfo
         {
-            public string Message { get; set; }
+            public string Message { get; set; } = string.Empty;
             public ToastType Type { get; set; }
-            public DateTime CreatedAt { get; set; }
         }
     }
 }

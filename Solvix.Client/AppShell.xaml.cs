@@ -7,17 +7,20 @@ namespace Solvix.Client
         public AppShell()
         {
             InitializeComponent();
-
-            // Register routes for navigation
             Routing.RegisterRoute(nameof(LoginPage), typeof(LoginPage));
+            Routing.RegisterRoute(nameof(ChatListPage), typeof(ChatListPage));
+            Routing.RegisterRoute(nameof(ChatPage), typeof(ChatPage));
+            // Routing.RegisterRoute(nameof(SettingsPage), typeof(SettingsPage)); // TODO: وقتی ساخته شد
 
-            // Instead of registering ChatPage directly, we'll use a parameterized route format
-            // This allows each chat ID to have a unique route path
-         
 
-            // Shell settings
-            Shell.SetTabBarIsVisible(this, false);
-            Shell.SetNavBarIsVisible(this, false);
+            CurrentItem = new ShellContent
+            {
+                Title = "سالویکس",
+                ContentTemplate = new DataTemplate(typeof(ChatListPage)),
+                Route = nameof(ChatListPage)
+            };
+
+            Shell.SetNavBarIsVisible(this, true);
         }
     }
 }

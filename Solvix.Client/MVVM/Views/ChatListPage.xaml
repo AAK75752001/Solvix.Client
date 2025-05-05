@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:Solvix.Client.MVVM.ViewModels"
+             xmlns:model="clr-namespace:Solvix.Client.Core.Models"
+             xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+             xmlns:converters="clr-namespace:Solvix.Client.Core.Converters"
+             x:Class="Solvix.Client.MVVM.Views.ChatListPage"
+             x:DataType="vm:ChatListViewModel"
+             Title="پیام‌ها">
+
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <converters:DateTimeToFormattedStringConverter x:Key="DateTimeFormatter" />
+            <toolkit:IntToBoolConverter x:Key="IntToBoolConverter"/>
+            <converters:BoolToColorConverter x:Key="OnlineStatusColorConverter" />
+            <toolkit:InvertedBoolConverter x:Key="InverseBoolConverter" />
+            <converters:IsOwnMessageToAlignmentConverter x:Key="MessageAlignmentConverter"/>
+            <converters:MessageStatusToIconConverter x:Key="StatusIconConverter"/>
+            <converters:MessageStatusToOpacityConverter x:Key="StatusOpacityConverter"/>
+
+            <Style x:Key="ChatItemBorderStyle" TargetType="Border">
+                <Setter Property="Padding" Value="10, 12"/>
+                <Setter Property="StrokeShape" Value="Rectangle"/>
+                <Setter Property="StrokeThickness" Value="0"/>
+                <Setter Property="BackgroundColor" Value="Transparent"/>
+                <Setter Property="Margin" Value="5,0"/>
+            </Style>
+            <Style x:Key="InitialsCircleStyle" TargetType="Border">
+                <Setter Property="HeightRequest" Value="55"/>
+                <Setter Property="WidthRequest" Value="55"/>
+                <Setter Property="StrokeShape">
+                    <RoundRectangle CornerRadius="27.5"/>
+                </Setter>
+                <Setter Property="BackgroundColor" Value="{DynamicResource TertiaryColor}"/>
+                <Setter Property="VerticalOptions" Value="Center"/>
+                <Setter Property="HorizontalOptions" Value="Center"/>
+            </Style>
+            <Style x:Key="InitialsLabelStyle" TargetType="Label">
+                <Setter Property="FontSize" Value="20"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+                <Setter Property="TextColor" Value="{DynamicResource InverseTextColor}"/>
+                <Setter Property="HorizontalOptions" Value="Center"/>
+                <Setter Property="VerticalOptions" Value="Center"/>
+                <Setter Property="HorizontalTextAlignment" Value="Center"/>
+                <Setter Property="VerticalTextAlignment" Value="Center"/>
+            </Style>
+            <Style x:Key="OnlineStatusIndicatorStyle" TargetType="Border">
+                <Setter Property="WidthRequest" Value="14"/>
+                <Setter Property="HeightRequest" Value="14"/>
+                <Setter Property="StrokeShape">
+                    <RoundRectangle CornerRadius="7"/>
+                </Setter>
+                <Setter Property="HorizontalOptions" Value="End"/>
+                <Setter Property="VerticalOptions" Value="End"/>
+                <Setter Property="Margin" Value="0,0,1,1"/>
+                <Setter Property="Stroke" Value="{DynamicResource PageBackgroundColor}"/>
+                <Setter Property="StrokeThickness" Value="2.5"/>
+            </Style>
+            <Style x:Key="ChatTitleStyle" TargetType="Label">
+                <Setter Property="FontSize" Value="16"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+                <Setter Property="TextColor" Value="{DynamicResource PrimaryTextColor}"/>
+                <Setter Property="LineBreakMode" Value="TailTruncation"/>
+                <Setter Property="VerticalOptions" Value="Center"/>
+                <Setter Property="HorizontalOptions" Value="Start"/>
+                <Setter Property="HorizontalTextAlignment" Value="Start"/>
+            </Style>
+            <Style x:Key="LastMessageStyle" TargetType="Label">
+                <Setter Property="FontSize" Value="14"/>
+                <Setter Property="TextColor" Value="{DynamicResource SecondaryTextColor}"/>
+                <Setter Property="LineBreakMode" Value="TailTruncation"/>
+                <Setter Property="VerticalOptions" Value="Center"/>
+                <Setter Property="HorizontalOptions" Value="Start"/>
+                <Setter Property="HorizontalTextAlignment" Value="Start"/>
+            </Style>
+            <Style x:Key="TimestampStyle" TargetType="Label">
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="TextColor" Value="{DynamicResource TertiaryTextColor}"/>
+                <Setter Property="HorizontalOptions" Value="End"/>
+                <Setter Property="VerticalOptions" Value="Start"/>
+            </Style>
+            <Style x:Key="UnreadBadgeStyle" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="{DynamicResource PrimaryColor}"/>
+                <Setter Property="StrokeShape">
+                    <RoundRectangle CornerRadius="10"/>
+                </Setter>
+                <Setter Property="Padding" Value="6,2"/>
+                <Setter Property="HorizontalOptions" Value="End"/>
+                <Setter Property="VerticalOptions" Value="End"/>
+                <Setter Property="MinimumWidthRequest" Value="20"/>
+                <Setter Property="MinimumHeightRequest" Value="20"/>
+                <Setter Property="Margin" Value="0,3,0,0"/>
+            </Style>
+            <Style x:Key="UnreadCountLabelStyle" TargetType="Label">
+                <Setter Property="TextColor" Value="{DynamicResource InverseTextColor}"/>
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="HorizontalTextAlignment" Value="Center"/>
+                <Setter Property="VerticalTextAlignment" Value="Center"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+            </Style>
+            <Style x:Key="MessageBubbleFrameStyle" TargetType="Frame">
+                <Setter Property="Padding" Value="10,8"/>
+                <Setter Property="Margin" Value="5,3"/>
+                <Setter Property="CornerRadius" Value="15"/>
+                <Setter Property="HasShadow" Value="False"/>
+                <Setter Property="MaximumWidthRequest" Value="{OnPlatform WinUI=400, Android=300, iOS=300}"/>
+            </Style>
+            <Style x:Key="MessageTextStyle" TargetType="Label">
+                <Setter Property="FontSize" Value="15"/>
+            </Style>
+            <Style x:Key="MessageTimeStyle" TargetType="Label">
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="TextColor" Value="{DynamicResource TertiaryTextColor}"/>
+                <Setter Property="HorizontalOptions" Value="End"/>
+                <Setter Property="VerticalOptions" Value="End"/>
+                <Setter Property="Margin" Value="5,0,0,0"/>
+            </Style>
+            <Style x:Key="MessageStatusIconStyle" TargetType="Label">
+                <Setter Property="FontFamily" Value="MaterialIcons"/>
+                <Setter Property="FontSize" Value="16"/>
+                <Setter Property="Margin" Value="3,0,0,0"/>
+                <Setter Property="VerticalOptions" Value="End"/>
+            </Style>
+
+        </ResourceDictionary>
+    </ContentPage.Resources>
+
+    <ContentPage.ToolbarItems>
+        <ToolbarItem Text="جستجو"
+                     IconImageSource="{FontImageSource FontFamily=MaterialIcons, Glyph=search, Color={DynamicResource PrimaryTextColor}}"
+                     Command="{Binding SearchChatsCommand}"
+                     Order="Primary" Priority="0"/>
+        <ToolbarItem Text="منو"
+                     IconImageSource="{FontImageSource FontFamily=MaterialIcons, Glyph=menu, Color={DynamicResource PrimaryTextColor}}"
+                     Command="{Binding GoToSettingsCommand}"
+                     Order="Primary" Priority="1"/>
+    </ContentPage.ToolbarItems>
+
+    <Grid RowDefinitions="Auto, *" BackgroundColor="{DynamicResource PageBackgroundColor}">
+
+        <SearchBar Grid.Row="0" Placeholder="جستجو..."
+                   Text="{Binding SearchQuery, Mode=TwoWay}"
+                   SearchCommand="{Binding SearchTriggeredCommand}"
+                   Margin="10,5"/>
+
+        <RefreshView Grid.Row="1"
+                     Command="{Binding RefreshCommand}"
+                     IsRefreshing="{Binding IsRefreshing}">
+            <CollectionView ItemsSource="{Binding FilteredChats}"
+                            SelectionMode="None"
+                            EmptyView="هنوز چتی وجود ندارد!">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="model:ChatModel">
+                        <Border Style="{StaticResource ChatItemBorderStyle}">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatListViewModel}}, Path=GoToChatCommand}"
+                                                       CommandParameter="{Binding .}"/>
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto, *, Auto" RowDefinitions="Auto, Auto" ColumnSpacing="12" RowSpacing="2">
+
+                                <Grid Grid.Row="0" Grid.Column="0" Grid.RowSpan="2" VerticalOptions="Center">
+                                    <Border Style="{StaticResource InitialsCircleStyle}">
+                                        <Label Text="{Binding OtherParticipant.Initials}" Style="{StaticResource InitialsLabelStyle}"/>
+                                    </Border>
+                                    <Border Style="{StaticResource OnlineStatusIndicatorStyle}"
+                                               BackgroundColor="{Binding OtherParticipant.IsOnline, Converter={StaticResource OnlineStatusColorConverter}}"
+                                               IsVisible="{Binding IsGroup, Converter={toolkit:InvertedBoolConverter}}"/>
+                                </Grid>
+
+                                <Label Grid.Row="0" Grid.Column="1" Text="{Binding DisplayTitle}" Style="{StaticResource ChatTitleStyle}" />
+                                <Label Grid.Row="1" Grid.Column="1" Text="{Binding LastMessage}" Style="{StaticResource LastMessageStyle}"/>
+                                <Label Grid.Row="0" Grid.Column="2" Text="{Binding LastMessageTime, Converter={StaticResource DateTimeFormatter}}" Style="{StaticResource TimestampStyle}" />
+                                <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource UnreadBadgeStyle}"
+                                          IsVisible="{Binding UnreadCount, Converter={StaticResource IntToBoolConverter}}">
+                                    <Label Text="{Binding UnreadCount}" Style="{StaticResource UnreadCountLabelStyle}"/>
+                                </Border>
+
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </RefreshView>
+
+        <ImageButton Grid.Row="1"
+                     Source="{FontImageSource FontFamily=MaterialIcons, Glyph=add_comment, Color={DynamicResource InverseTextColor}}"
+                     BackgroundColor="{DynamicResource PrimaryColor}"
+                     CornerRadius="28" HeightRequest="56" WidthRequest="56" Padding="12"
+                     HorizontalOptions="End" VerticalOptions="End" Margin="16"
+                     Command="{Binding NewChatCommand}">
+            <ImageButton.Shadow>
+                <Shadow Brush="Black" Offset="4,4" Radius="8" Opacity="0.3"/>
+            </ImageButton.Shadow>
+        </ImageButton>
+
+        <ActivityIndicator Grid.Row="0" Grid.RowSpan="2"
+                           IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}"
+                           HorizontalOptions="Center" VerticalOptions="Center"
+                           Color="{DynamicResource PrimaryColor}"/>
+    </Grid>
+</ContentPage>
