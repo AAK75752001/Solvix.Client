@@ -1,356 +1,231 @@
 ﻿using Solvix.Client.Core;
 using Solvix.Client.Core.Interfaces;
 using Solvix.Client.Core.Models;
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using System.ComponentModel.DataAnnotations;
 using System.Text.RegularExpressions;
-using System.Windows.Input;
+using System.Threading.Tasks;
 
 namespace Solvix.Client.MVVM.ViewModels
 {
-    public class LoginViewModel : INotifyPropertyChanged
+    public partial class LoginViewModel : ObservableValidator
     {
         private readonly IAuthService _authService;
         private readonly IToastService _toastService;
 
-        private string _phoneNumber = string.Empty;
-        private string _password = string.Empty;
-        private string _firstName = string.Empty;
-        private string _lastName = string.Empty;
+        // --- وضعیت‌های UI ---
+        [ObservableProperty]
         private bool _isLoading;
-        private bool _isPhoneChecking;
-        private bool _isPhoneValid;
+
+        [ObservableProperty]
+        private bool _isPhoneNumberLocked;
+
+        [ObservableProperty]
+        private bool _showPasswordSection;
+
+        [ObservableProperty]
+        private bool _showRegistrationSection;
+
+        [ObservableProperty]
         private bool _isPasswordVisible;
-        private bool _showPasswordField;
-        private bool _showRegistrationFields;
-        private bool _isLoginEnabled = true;
 
-        public string PhoneNumber
-        {
-            get => _phoneNumber;
-            set
-            {
-                if (_phoneNumber != value)
-                {
-                    _phoneNumber = value;
-                    OnPropertyChanged();
-                    OnPropertyChanged(nameof(IsSubmitEnabled));
-                    IsPhoneValid = ValidatePhoneNumber();
-                }
-            }
-        }
+        // --- فیلدهای ورودی ---
+        [ObservableProperty]
+        [Required(ErrorMessage = "شماره تلفن الزامی است.")]
+        [RegularExpression(Constants.Validation.PhoneRegex, ErrorMessage = "فرمت شماره تلفن نامعتبر است.")]
+        [NotifyCanExecuteChangedFor(nameof(SubmitCommand))]
+        private string _phoneNumber = string.Empty;
 
-        public string Password
-        {
-            get => _password;
-            set
-            {
-                if (_password != value)
-                {
-                    _password = value;
-                    OnPropertyChanged();
-                    OnPropertyChanged(nameof(IsSubmitEnabled));
-                }
-            }
-        }
+        [ObservableProperty]
+        [Required(ErrorMessage = "رمز عبور الزامی است.")]
+        [MinLength(Constants.Validation.PasswordMinLength, ErrorMessage = "رمز عبور باید حداقل {1} کاراکتر باشد.")]
+        [NotifyCanExecuteChangedFor(nameof(SubmitCommand))]
+        private string _password = string.Empty;
 
-        public string FirstName
-        {
-            get => _firstName;
-            set
-            {
-                if (_firstName != value)
-                {
-                    _firstName = value;
-                    OnPropertyChanged();
-                    OnPropertyChanged(nameof(IsSubmitEnabled));
-                }
-            }
-        }
+        [ObservableProperty]
+        [NotifyCanExecuteChangedFor(nameof(SubmitCommand))]
+        private string? _firstName;
 
-        public string LastName
-        {
-            get => _lastName;
-            set
-            {
-                if (_lastName != value)
-                {
-                    _lastName = value;
-                    OnPropertyChanged();
-                    OnPropertyChanged(nameof(IsSubmitEnabled));
-                }
-            }
-        }
+        [ObservableProperty]
+        [NotifyCanExecuteChangedFor(nameof(SubmitCommand))]
+        private string? _lastName;
 
-        public bool IsLoading
-        {
-            get => _isLoading;
-            set
-            {
-                if (_isLoading != value)
-                {
-                    _isLoading = value;
-                    OnPropertyChanged();
-                    OnPropertyChanged(nameof(IsSubmitEnabled));
-                }
-            }
-        }
+        // --- وضعیت فعلی ViewModel ---
+        public enum LoginState { EnteringPhone, EnteringPassword, Registering }
 
-        public bool IsPhoneChecking
-        {
-            get => _isPhoneChecking;
-            set
-            {
-                if (_isPhoneChecking != value)
-                {
-                    _isPhoneChecking = value;
-                    OnPropertyChanged();
-                    OnPropertyChanged(nameof(IsSubmitEnabled));
-                }
-            }
-        }
+        [ObservableProperty]
+        private LoginState _currentState = LoginState.EnteringPhone;
 
-        public bool IsPhoneValid
-        {
-            get => _isPhoneValid;
-            set
-            {
-                if (_isPhoneValid != value)
-                {
-                    _isPhoneValid = value;
-                    OnPropertyChanged();
-                    OnPropertyChanged(nameof(IsSubmitEnabled));
-                }
-            }
-        }
-
-        public bool IsPasswordVisible
-        {
-            get => _isPasswordVisible;
-            set
-            {
-                if (_isPasswordVisible != value)
-                {
-                    _isPasswordVisible = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
-
-        public bool ShowPasswordField
-        {
-            get => _showPasswordField;
-            set
-            {
-                if (_showPasswordField != value)
-                {
-                    _showPasswordField = value;
-                    OnPropertyChanged();
-                    OnPropertyChanged(nameof(IsSubmitEnabled));
-                }
-            }
-        }
-
-        public bool ShowRegistrationFields
-        {
-            get => _showRegistrationFields;
-            set
-            {
-                if (_showRegistrationFields != value)
-                {
-                    _showRegistrationFields = value;
-                    OnPropertyChanged();
-                    OnPropertyChanged(nameof(IsSubmitEnabled));
-                    OnPropertyChanged(nameof(SubmitButtonText));
-                }
-            }
-        }
-
-        public bool IsLoginEnabled
-        {
-            get => _isLoginEnabled;
-            set
-            {
-                if (_isLoginEnabled != value)
-                {
-                    _isLoginEnabled = value;
-                    OnPropertyChanged();
-                    OnPropertyChanged(nameof(IsSubmitEnabled));
-                }
-            }
-        }
-
-        public bool IsSubmitEnabled =>
-            !IsLoading &&
-            !IsPhoneChecking &&
-            IsPhoneValid &&
-            IsLoginEnabled &&
-            (!ShowPasswordField || !string.IsNullOrEmpty(Password)) &&
-            (!ShowRegistrationFields || (Password.Length >= int.Parse(Constants.Validation.PasswordMinLength)));
-
-        public string SubmitButtonText => ShowRegistrationFields ? "Register" : (ShowPasswordField ? "Login" : "Continue");
-
-        public ICommand SubmitCommand { get; private set; }
-        public ICommand TogglePasswordVisibilityCommand { get; private set; }
-        public ICommand ForgotPasswordCommand { get; private set; }
-
+        // --- Constructor ---
         public LoginViewModel(IAuthService authService, IToastService toastService)
         {
             _authService = authService;
             _toastService = toastService;
-
-            SubmitCommand = new Command(async () => await SubmitAsync());
-            TogglePasswordVisibilityCommand = new Command(() => IsPasswordVisible = !IsPasswordVisible);
-            ForgotPasswordCommand = new Command(async () => await ForgotPasswordAsync());
+            ErrorsChanged += (s, e) => SubmitCommand.NotifyCanExecuteChanged();
         }
 
-        private bool ValidatePhoneNumber()
-        {
-            return !string.IsNullOrEmpty(PhoneNumber) && Regex.IsMatch(PhoneNumber, Constants.Validation.PhoneRegex);
-        }
-
+        // --- دستورات (Commands) ---
+        [RelayCommand(CanExecute = nameof(CanSubmit))]
         private async Task SubmitAsync()
         {
-            if (!IsSubmitEnabled)
+            ValidateAllProperties();
+            if (HasErrors)
+            {
+                var firstError = GetErrors().FirstOrDefault()?.ErrorMessage;
+                await _toastService.ShowToastAsync(firstError ?? "لطفا خطاهای فرم را برطرف کنید.", ToastType.Warning);
                 return;
+            }
 
-            if (!ShowPasswordField)
-            {
-                await CheckPhoneAndProceedAsync();
-            }
-            else if (ShowRegistrationFields)
-            {
-                await RegisterAsync();
-            }
-            else
-            {
-                await LoginAsync();
-            }
-        }
-
-        private async Task CheckPhoneAndProceedAsync()
-        {
+            IsLoading = true;
             try
             {
-                IsPhoneChecking = true;
-                IsLoginEnabled = false;
-                IsLoading = true;
-
-                var exists = await _authService.CheckPhoneExists(PhoneNumber);
-
-                // Show appropriate fields based on whether the phone exists
-                ShowPasswordField = true;
-                ShowRegistrationFields = !exists;
-
-                if (exists)
+                switch (CurrentState)
                 {
-                    await _toastService.ShowToastAsync("Please enter your password to login", ToastType.Info);
-                }
-                else
-                {
-                    await _toastService.ShowToastAsync("Please complete registration", ToastType.Info);
+                    case LoginState.EnteringPhone:
+                        await CheckPhoneAndProceedAsync();
+                        break;
+                    case LoginState.EnteringPassword:
+                        await LoginAsync();
+                        break;
+                    case LoginState.Registering:
+                        await RegisterAsync();
+                        break;
                 }
             }
             catch (Exception ex)
             {
-                await _toastService.ShowToastAsync($"Error: {ex.Message}", ToastType.Error);
+                await _toastService.ShowToastAsync($"خطا: {ex.Message}", ToastType.Error);
             }
             finally
             {
-                IsPhoneChecking = false;
-                IsLoginEnabled = true;
                 IsLoading = false;
+            }
+        }
+
+        private bool CanSubmit()
+        {
+            if (IsLoading) return false;
+
+            ValidateAllProperties();
+
+            switch (CurrentState)
+            {
+                case LoginState.EnteringPhone:
+                    return !GetErrors(nameof(PhoneNumber)).Any() && !string.IsNullOrEmpty(PhoneNumber);
+                case LoginState.EnteringPassword:
+                    return !GetErrors(nameof(Password)).Any() && !string.IsNullOrEmpty(Password);
+                case LoginState.Registering:
+                    return !GetErrors(nameof(Password)).Any() && !string.IsNullOrEmpty(Password);
+                default:
+                    return false;
+            }
+        }
+
+
+        [RelayCommand]
+        private void TogglePasswordVisibility() => IsPasswordVisible = !IsPasswordVisible;
+
+        [RelayCommand]
+        private async Task ForgotPasswordAsync()
+        {
+            await _toastService.ShowToastAsync("قابلیت بازیابی رمز عبور به زودی اضافه خواهد شد.", ToastType.Info);
+        }
+
+        [RelayCommand]
+        private void ChangePhoneNumber()
+        {
+            // Reset state to enter phone number again
+            PhoneNumber = string.Empty;
+            Password = string.Empty;
+            FirstName = string.Empty;
+            LastName = string.Empty;
+            IsPhoneNumberLocked = false;
+            ShowPasswordSection = false;
+            ShowRegistrationSection = false;
+            CurrentState = LoginState.EnteringPhone;
+            ClearErrors();
+            SubmitCommand.NotifyCanExecuteChanged();
+        }
+
+        // --- متدهای کمکی ---
+        private async Task CheckPhoneAndProceedAsync()
+        {
+            try
+            {
+                var exists = await _authService.CheckPhoneExists(PhoneNumber);
+                IsPhoneNumberLocked = true;
+                ShowPasswordSection = true;
+
+                if (exists)
+                {
+                    CurrentState = LoginState.EnteringPassword;
+                    ShowRegistrationSection = false;
+                    await _toastService.ShowToastAsync("لطفا رمز عبور خود را وارد کنید.", ToastType.Info);
+                }
+                else
+                {
+                    CurrentState = LoginState.Registering;
+                    ShowRegistrationSection = true;
+                    await _toastService.ShowToastAsync("این شماره ثبت نشده. لطفا اطلاعات ثبت‌نام را کامل کنید.", ToastType.Info);
+                }
+            }
+            catch (Exception ex)
+            {
+                await _toastService.ShowToastAsync($"خطا در بررسی شماره: {ex.Message}", ToastType.Error);
+                IsPhoneNumberLocked = false;
+                ShowPasswordSection = false;
+                ShowRegistrationSection = false;
+                CurrentState = LoginState.EnteringPhone;
+            }
+            finally
+            {
+                // Trigger re-evaluation of CanExecute for the submit button
+                SubmitCommand.NotifyCanExecuteChanged();
             }
         }
 
         private async Task LoginAsync()
         {
-            try
+            var user = await _authService.LoginAsync(PhoneNumber, Password);
+            if (user != null)
             {
-                IsLoading = true;
-
-                var user = await _authService.LoginAsync(PhoneNumber, Password);
-
-                if (user != null)
-                {
-                    await _toastService.ShowToastAsync($"Welcome back, {user.DisplayName}!", ToastType.Success);
-
-                    // Navigate to main page
-                    Application.Current.MainPage = new AppShell();
-                }
-                else
-                {
-                    await _toastService.ShowToastAsync("Login failed. Please check your password.", ToastType.Error);
-                }
+                await _toastService.ShowToastAsync($"خوش آمدید {user.DisplayName}!", ToastType.Success);
+                // Navigate to main page
+                Application.Current!.MainPage = new AppShell(); // Use non-null assertion if sure it's not null
             }
-            catch (Exception ex)
+            else
             {
-                await _toastService.ShowToastAsync($"Error: {ex.Message}", ToastType.Error);
-            }
-            finally
-            {
-                IsLoading = false;
+                await _toastService.ShowToastAsync("ورود ناموفق. لطفا رمز عبور را بررسی کنید.", ToastType.Error);
+                // Password = string.Empty; // Optionally clear password field on failure
             }
         }
 
         private async Task RegisterAsync()
         {
-            try
+            var registerDto = new RegisterDto
             {
-                if (Password.Length < int.Parse(Constants.Validation.PasswordMinLength))
-                {
-                    await _toastService.ShowToastAsync($"Password must be at least {Constants.Validation.PasswordMinLength} characters", ToastType.Warning);
-                    return;
-                }
+                PhoneNumber = PhoneNumber,
+                Password = Password,
+                FirstName = FirstName,
+                LastName = LastName
+            };
 
-                IsLoading = true;
-
-                var registerDto = new RegisterDto
-                {
-                    PhoneNumber = PhoneNumber,
-                    Password = Password,
-                    FirstName = FirstName,
-                    LastName = LastName
-                };
-
-                var user = await _authService.RegisterAsync(registerDto);
-
-                if (user != null)
-                {
-                    await _toastService.ShowToastAsync("Registration successful!", ToastType.Success);
-
-                    // Navigate to main page
-                    Application.Current.MainPage = new AppShell();
-                }
-                else
-                {
-                    await _toastService.ShowToastAsync("Registration failed. Please try again.", ToastType.Error);
-                }
+            var user = await _authService.RegisterAsync(registerDto);
+            if (user != null)
+            {
+                await _toastService.ShowToastAsync("ثبت نام با موفقیت انجام شد!", ToastType.Success);
+                // Navigate to main page
+                Application.Current!.MainPage = new AppShell(); // Use non-null assertion
             }
-            catch (Exception ex)
+            else
             {
-                await _toastService.ShowToastAsync($"Error: {ex.Message}", ToastType.Error);
-            }
-            finally
-            {
-                IsLoading = false;
+                await _toastService.ShowToastAsync("ثبت نام ناموفق. لطفا دوباره تلاش کنید.", ToastType.Error);
             }
         }
 
-        private async Task ForgotPasswordAsync()
-        {
-            await _toastService.ShowToastAsync("Password reset will be available in a future update", ToastType.Info);
-        }
-
-        #region INotifyPropertyChanged
-
-        public event PropertyChangedEventHandler PropertyChanged;
-
-        protected void OnPropertyChanged([CallerMemberName] string propertyName = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
-
-        #endregion
+        // Helper for Validation Text
+        public string? GetFirstError(string propertyName)
+            => GetErrors(propertyName).FirstOrDefault()?.ErrorMessage;
     }
 }

@@ -82,7 +82,6 @@ namespace Solvix.Client
         {
             // Auth view models
             services.AddTransient<LoginViewModel>();
-            services.AddTransient<RegisterViewModel>();
 
             // Main view models
         
@@ -92,7 +91,6 @@ namespace Solvix.Client
         {
             // Auth views
             services.AddTransient<LoginPage>();
-            services.AddTransient<RegisterPage>();
 
             // Main views
            

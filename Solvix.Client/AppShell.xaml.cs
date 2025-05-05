@@ -10,8 +10,6 @@ namespace Solvix.Client
 
             // Register routes for navigation
             Routing.RegisterRoute(nameof(LoginPage), typeof(LoginPage));
-            Routing.RegisterRoute(nameof(RegisterPage), typeof(RegisterPage));
-            Routing.RegisterRoute(nameof(MainPage), typeof(MainPage));
 
             // Instead of registering ChatPage directly, we'll use a parameterized route format
             // This allows each chat ID to have a unique route path

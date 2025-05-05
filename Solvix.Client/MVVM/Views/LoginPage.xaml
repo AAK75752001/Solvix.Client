@@ -1,220 +1,192 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:viewmodels="clr-namespace:Solvix.Client.MVVM.ViewModels"
+             xmlns:vm="clr-namespace:Solvix.Client.MVVM.ViewModels"
              xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
-             x:Class="Solvix.Client.MVVM.Views.LoginPage"
-             x:DataType="viewmodels:LoginViewModel"
+             xmlns:converters="clr-namespace:Solvix.Client.Core.Converters" x:Class="Solvix.Client.MVVM.Views.LoginPage"
+             x:DataType="vm:LoginViewModel"
              Shell.NavBarIsVisible="False"
-             Shell.FlyoutBehavior="Disabled"
              BackgroundColor="{DynamicResource PageBackgroundColor}">
 
-    <Shell.BackButtonBehavior>
-        <BackButtonBehavior IsVisible="False" IsEnabled="False" />
-    </Shell.BackButtonBehavior>
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <converters:AuthButtonTextConverter x:Key="AuthButtonTextConverter" />
+            <converters:GreaterThanZeroConverter x:Key="GreaterThanZeroConverter"/>
+            <toolkit:InvertedBoolConverter x:Key="InverseBoolConverter" />
+            <toolkit:IsStringNotNullOrWhiteSpaceConverter x:Key="IsStringNotNullOrWhiteSpaceConverter"/>
+            <Style x:Key="InputFrameStyle" TargetType="Frame">
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="Margin" Value="0,5"/>
+                <Setter Property="CornerRadius" Value="8"/>
+                <Setter Property="BorderColor" Value="{DynamicResource FrameBorderColor}"/>
+                <Setter Property="BackgroundColor" Value="{DynamicResource CardBackgroundColor}"/>
+                <Setter Property="HasShadow" Value="False"/>
+            </Style>
+            <Style x:Key="InputFieldStyle" TargetType="Entry">
+                <Setter Property="TextColor" Value="{DynamicResource PrimaryTextColor}"/>
+                <Setter Property="PlaceholderColor" Value="{DynamicResource TertiaryTextColor}"/>
+                <Setter Property="FontSize" Value="16"/>
+                <Setter Property="HeightRequest" Value="50"/>
+                <Setter Property="VerticalTextAlignment" Value="Center"/>
+                <Setter Property="Margin" Value="15,0"/>
+            </Style>
+            <Style x:Key="ValidationLabelStyle" TargetType="Label">
+                <Setter Property="TextColor" Value="{DynamicResource ErrorColor}"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="Margin" Value="10,0,0,5"/>
+                <Setter Property="IsVisible" Value="{Binding Source={RelativeSource Self}, Path=Text, Converter={StaticResource IsStringNotNullOrWhiteSpaceConverter}}"/>
+            </Style>
+            <Style x:Key="PrimaryButtonStyle" TargetType="Button">
+                <Setter Property="BackgroundColor" Value="{DynamicResource PrimaryColor}"/>
+                <Setter Property="TextColor" Value="{DynamicResource InverseTextColor}"/>
+                <Setter Property="CornerRadius" Value="25"/>
+                <Setter Property="HeightRequest" Value="50"/>
+                <Setter Property="FontSize" Value="16"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+                <Setter Property="VisualStateManager.VisualStateGroups">
+                    <VisualStateGroupList>
+                        <VisualStateGroup Name="CommonStates">
+                            <VisualState Name="Normal" />
+                            <VisualState Name="Disabled">
+                                <VisualState.Setters>
+                                    <Setter Property="BackgroundColor" Value="{DynamicResource TertiaryTextColor}"/>
+                                    <Setter Property="TextColor" Value="{DynamicResource PageBackgroundColor}"/>
+                                </VisualState.Setters>
+                            </VisualState>
+                        </VisualStateGroup>
+                    </VisualStateGroupList>
+                </Setter>
+            </Style>
+            <Style x:Key="TextButtonStyle" TargetType="Button">
+                <Setter Property="TextColor" Value="{DynamicResource PrimaryColor}"/>
+                <Setter Property="BackgroundColor" Value="Transparent"/>
+                <Setter Property="FontSize" Value="14"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="MinimumHeightRequest" Value="0"/>
+            </Style>
+            <Style x:Key="IconButtonStyle" BasedOn="{StaticResource TextButtonStyle}" TargetType="Button">
+                <Setter Property="Padding" Value="10,0"/>
+                <Setter Property="FontSize" Value="24"/>
+                <Setter Property="FontFamily" Value="MaterialIcons"/>
+                <Setter Property="TextColor" Value="{DynamicResource SecondaryTextColor}"/>
+                <Setter Property="MinimumWidthRequest" Value="40"/>
+                <Setter Property="VerticalOptions" Value="Center"/>
+            </Style>
+            <Style x:Key="ChangeNumberButtonStyle" BasedOn="{StaticResource TextButtonStyle}" TargetType="Button">
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="TextColor" Value="{DynamicResource SecondaryTextColor}"/>
+            </Style>
+        </ResourceDictionary>
+    </ContentPage.Resources>
 
-    <Grid RowDefinitions="Auto,*,Auto">
-        <!-- Header -->
-        <VerticalStackLayout Grid.Row="0" Margin="0,60,0,0" Spacing="10">
-            <Image Source="logo.png" HeightRequest="120" WidthRequest="120" HorizontalOptions="Center">
-                <Image.Shadow>
-                    <Shadow Brush="{DynamicResource PrimaryColor}"
-                            Offset="0,0"
-                            Opacity="0.3"
-                            Radius="15" />
-                </Image.Shadow>
-            </Image>
+    <ScrollView>
+        <VerticalStackLayout Padding="30,0" Spacing="10" VerticalOptions="Center">
 
-            <Label Text="Solvix Chat" FontSize="32" FontAttributes="Bold" HorizontalOptions="Center" 
-                   TextColor="{DynamicResource PrimaryTextColor}" Margin="0,10,0,0">
-                <Label.Shadow>
-                    <Shadow Brush="{DynamicResource PrimaryColor}"
-                            Offset="0,0"
-                            Opacity="0.2"
-                            Radius="2" />
-                </Label.Shadow>
-            </Label>
+            <Image Source="logo.png" HeightRequest="80" HorizontalOptions="Center" Margin="0,0,0,30"/>
 
-            <Label Text="Connect with friends and colleagues" FontSize="16" HorizontalOptions="Center" 
-                   TextColor="{DynamicResource SecondaryTextColor}" Margin="0,0,0,20" />
-        </VerticalStackLayout>
+            <Label Text="Enter your phone number"
+                   FontSize="24"
+                   FontAttributes="Bold"
+                   HorizontalTextAlignment="Center"
+                   TextColor="{DynamicResource PrimaryTextColor}"/>
 
-        <!-- Content -->
-        <ScrollView Grid.Row="1" Padding="20,0">
-            <VerticalStackLayout Spacing="20" VerticalOptions="Center">
-                <!-- Phone Number -->
-                <Border BackgroundColor="{DynamicResource CardBackgroundColor}" 
-                        Padding="20,15" 
-                        StrokeThickness="0"
-                        StrokeShape="RoundRectangle 16,16,16,16">
-                    <Border.Shadow>
-                        <Shadow Brush="{DynamicResource ShadowColor}"
-                                Offset="0,4"
-                                Opacity="0.1"
-                                Radius="8" />
-                    </Border.Shadow>
-                    <VerticalStackLayout Spacing="8">
-                        <Label Text="Phone Number" TextColor="{DynamicResource PrimaryTextColor}" FontSize="14" FontAttributes="Bold" />
-                        <Grid ColumnDefinitions="*,Auto">
-                            <Entry Grid.Column="0"
-                                   Text="{Binding PhoneNumber}"
-                                   Placeholder="09XXXXXXXXX"
-                                   PlaceholderColor="{DynamicResource TertiaryTextColor}"
-                                   TextColor="{DynamicResource PrimaryTextColor}"
-                                   BackgroundColor="Transparent"
-                                   Keyboard="Telephone"
-                                   MaxLength="11"
-                                   IsEnabled="{Binding IsLoginEnabled}" />
-                            <ActivityIndicator Grid.Column="1" 
-                                               IsRunning="{Binding IsPhoneChecking}" 
-                                               IsVisible="{Binding IsPhoneChecking}" 
-                                               Color="{DynamicResource PrimaryColor}" />
-                        </Grid>
-                    </VerticalStackLayout>
-                </Border>
+            <Label Text="We will send you a confirmation code"
+                   FontSize="14"
+                   HorizontalTextAlignment="Center"
+                   TextColor="{DynamicResource SecondaryTextColor}"
+                   Margin="0,0,0,20"/>
 
-                <!-- Password -->
-                <Border BackgroundColor="{DynamicResource CardBackgroundColor}" 
-                        Padding="20,15" 
-                        StrokeThickness="0"
-                        StrokeShape="RoundRectangle 16,16,16,16"
-                        IsVisible="{Binding ShowPasswordField}">
-                    <Border.Shadow>
-                        <Shadow Brush="{DynamicResource ShadowColor}"
-                                Offset="0,4"
-                                Opacity="0.1"
-                                Radius="8" />
-                    </Border.Shadow>
-                    <VerticalStackLayout Spacing="8">
-                        <Label Text="Password" TextColor="{DynamicResource PrimaryTextColor}" FontSize="14" FontAttributes="Bold" />
-                        <Grid ColumnDefinitions="*,Auto">
-                            <Entry Grid.Column="0"
-                                   Text="{Binding Password}"
-                                   Placeholder="Enter your password"
-                                   PlaceholderColor="{DynamicResource TertiaryTextColor}"
-                                   TextColor="{DynamicResource PrimaryTextColor}"
-                                   BackgroundColor="Transparent"
-                                   IsPassword="{Binding IsPasswordVisible, Converter={StaticResource InverseBoolConverter}}" />
-                            <Button Grid.Column="1"
-                                    Text="👁️"
-                                    BackgroundColor="Transparent"
-                                    TextColor="{DynamicResource PrimaryTextColor}"
-                                    Command="{Binding TogglePasswordVisibilityCommand}" />
-                        </Grid>
-                    </VerticalStackLayout>
-                </Border>
+            <Frame Style="{StaticResource InputFrameStyle}">
+                <Frame.Triggers>
+                    <DataTrigger TargetType="Frame" Binding="{Binding Errors[PhoneNumber].Count, FallbackValue=0, Converter={StaticResource GreaterThanZeroConverter}}" Value="True">
+                        <Setter Property="BorderColor" Value="{DynamicResource ErrorColor}"/>
+                    </DataTrigger>
+                </Frame.Triggers>
+                <Entry x:Name="PhoneNumberEntry"
+                       Placeholder="Phone Number (e.g., 0912...)"
+                       Text="{Binding PhoneNumber, Mode=TwoWay}"
+                       Keyboard="Telephone"
+                       MaxLength="11"
+                       IsEnabled="{Binding IsPhoneNumberLocked, Converter={StaticResource InverseBoolConverter}}"
+                       Style="{StaticResource InputFieldStyle}"/>
+            </Frame>
+            <Label Style="{StaticResource ValidationLabelStyle}"
+                   Text="{Binding Errors[PhoneNumber][0]}"/>
 
-                <!-- Registration Fields -->
-                <VerticalStackLayout IsVisible="{Binding ShowRegistrationFields}" Spacing="20">
-                    <!-- First Name -->
-                    <Border BackgroundColor="{DynamicResource CardBackgroundColor}" 
-                            Padding="20,15" 
-                            StrokeThickness="0"
-                            StrokeShape="RoundRectangle 16,16,16,16">
-                        <Border.Shadow>
-                            <Shadow Brush="{DynamicResource ShadowColor}"
-                                    Offset="0,4"
-                                    Opacity="0.1"
-                                    Radius="8" />
-                        </Border.Shadow>
-                        <VerticalStackLayout Spacing="8">
-                            <Label Text="First Name" TextColor="{DynamicResource PrimaryTextColor}" FontSize="14" FontAttributes="Bold" />
-                            <Entry Text="{Binding FirstName}"
-                                   Placeholder="Enter your first name"
-                                   PlaceholderColor="{DynamicResource TertiaryTextColor}"
-                                   TextColor="{DynamicResource PrimaryTextColor}"
-                                   BackgroundColor="Transparent" />
-                        </VerticalStackLayout>
-                    </Border>
+            <Button Text="Change number?"
+                    Command="{Binding ChangePhoneNumberCommand}"
+                    IsVisible="{Binding IsPhoneNumberLocked}"
+                    HorizontalOptions="End"
+                    Style="{StaticResource ChangeNumberButtonStyle}"
+                    Margin="0,-5,0,10"/>
 
-                    <!-- Last Name -->
-                    <Border BackgroundColor="{DynamicResource CardBackgroundColor}" 
-                            Padding="20,15" 
-                            StrokeThickness="0"
-                            StrokeShape="RoundRectangle 16,16,16,16">
-                        <Border.Shadow>
-                            <Shadow Brush="{DynamicResource ShadowColor}"
-                                    Offset="0,4"
-                                    Opacity="0.1"
-                                    Radius="8" />
-                        </Border.Shadow>
-                        <VerticalStackLayout Spacing="8">
-                            <Label Text="Last Name" TextColor="{DynamicResource PrimaryTextColor}" FontSize="14" FontAttributes="Bold" />
-                            <Entry Text="{Binding LastName}"
-                                   Placeholder="Enter your last name"
-                                   PlaceholderColor="{DynamicResource TertiaryTextColor}"
-                                   TextColor="{DynamicResource PrimaryTextColor}"
-                                   BackgroundColor="Transparent" />
-                        </VerticalStackLayout>
-                    </Border>
-                </VerticalStackLayout>
+            <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" Color="{DynamicResource PrimaryColor}" Margin="0,10"/>
 
-                <!-- Submit Button -->
-                <Border BackgroundColor="{DynamicResource PrimaryColor}"
-                        StrokeThickness="0"
-                        StrokeShape="RoundRectangle 30,30,30,30"
-                        HeightRequest="55"
-                        Margin="20,30">
-                    <Border.Shadow>
-                        <Shadow Brush="{DynamicResource PrimaryColor}"
-                                Offset="0,6"
-                                Opacity="0.3"
-                                Radius="15" />
-                    </Border.Shadow>
-                    <Button Text="{Binding SubmitButtonText}"
-                            Command="{Binding SubmitCommand}"
-                            IsEnabled="{Binding IsSubmitEnabled}"
-                            BackgroundColor="Transparent"
-                            TextColor="White"
-                            FontAttributes="Bold"
-                            FontSize="16"
-                            VerticalOptions="Fill"
-                            HorizontalOptions="Fill" />
-                </Border>
+            <Frame Style="{StaticResource InputFrameStyle}"
+                    IsVisible="{Binding ShowPasswordSection}">
+                <Frame.Triggers>
+                    <DataTrigger TargetType="Frame" Binding="{Binding Errors[Password].Count, FallbackValue=0, Converter={StaticResource GreaterThanZeroConverter}}" Value="True">
+                        <Setter Property="BorderColor" Value="{DynamicResource ErrorColor}"/>
+                    </DataTrigger>
+                </Frame.Triggers>
+                <Grid ColumnDefinitions="*, Auto">
+                    <Entry Placeholder="Password"
+                            Text="{Binding Password, Mode=TwoWay}"
+                            IsPassword="{Binding IsPasswordVisible, Converter={StaticResource InverseBoolConverter}}"
+                            Grid.Column="0"
+                            Style="{StaticResource InputFieldStyle}"/>
+                    <Button Grid.Column="1"
+                              Command="{Binding TogglePasswordVisibilityCommand}"
+                              Style="{StaticResource IconButtonStyle}">
+                        <Button.Triggers>
+                            <DataTrigger TargetType="Button"
+                                           Binding="{Binding IsPasswordVisible}"
+                                           Value="True">
+                                <Setter Property="Text" Value="visibility_off" />
+                            </DataTrigger>
+                            <DataTrigger TargetType="Button"
+                                           Binding="{Binding IsPasswordVisible}"
+                                           Value="False">
+                                <Setter Property="Text" Value="visibility" />
+                            </DataTrigger>
+                        </Button.Triggers>
+                    </Button>
+                </Grid>
+            </Frame>
+            <Label Style="{StaticResource ValidationLabelStyle}"
+                    Text="{Binding Errors[Password][0]}"
+                    IsVisible="{Binding ShowPasswordSection}"/>
 
-                <!-- Forgot Password -->
-                <Button Text="Forgot Password?"
-                        Command="{Binding ForgotPasswordCommand}"
-                        IsVisible="{Binding ShowPasswordField, Converter={StaticResource BoolToVisibilityConverter}}"
-                        BackgroundColor="Transparent"
-                        TextColor="{DynamicResource PrimaryColor}"
+            <VerticalStackLayout IsVisible="{Binding ShowRegistrationSection}" Spacing="10" Margin="0,10,0,0">
+                <Label Text="Complete your profile"
+                        FontSize="16"
                         FontAttributes="Bold"
-                        CornerRadius="0"
-                        Margin="0,0,0,0" />
-
-                <!-- Loading Indicator -->
-                <Border Grid.Row="1"
-        IsVisible="{Binding IsLoading}"
-        HorizontalOptions="Center"
-        VerticalOptions="Center"
-        StrokeThickness="0"
-        StrokeShape="RoundRectangle 12,12,12,12"
-        BackgroundColor="{DynamicResource CardBackgroundColor}"
-        Padding="20">
-                    <Border.Shadow>
-                        <Shadow Brush="{DynamicResource ShadowColor}"
-                Offset="0,3"
-                Opacity="0.2"
-                Radius="10" />
-                    </Border.Shadow>
-                    <VerticalStackLayout Spacing="10">
-                        <ActivityIndicator IsRunning="{Binding IsLoading}" 
-                           Color="{DynamicResource PrimaryColor}" 
-                           HeightRequest="40" 
-                           WidthRequest="40" />
-                        <Label Text="Loading chat..." 
-               TextColor="{DynamicResource PrimaryTextColor}" 
-               FontSize="14" 
-               HorizontalOptions="Center" />
-                    </VerticalStackLayout>
-                </Border>
+                        HorizontalTextAlignment="Center"
+                        TextColor="{DynamicResource PrimaryTextColor}" Margin="0,0,0,5"/>
+                <Frame Style="{StaticResource InputFrameStyle}">
+                    <Entry Placeholder="First Name (Optional)"
+                             Text="{Binding FirstName, Mode=TwoWay}"
+                             Style="{StaticResource InputFieldStyle}"/>
+                </Frame>
+                <Frame Style="{StaticResource InputFrameStyle}">
+                    <Entry Placeholder="Last Name (Optional)"
+                             Text="{Binding LastName, Mode=TwoWay}"
+                             Style="{StaticResource InputFieldStyle}"/>
+                </Frame>
             </VerticalStackLayout>
-        </ScrollView>
 
-        <!-- Footer -->
-        <VerticalStackLayout Grid.Row="2" Padding="20" Spacing="10" HorizontalOptions="Center">
-            <Label Text="© 2025 Solvix Chat" HorizontalOptions="Center" TextColor="{DynamicResource TertiaryTextColor}" FontSize="12" />
-            <Label Text="Version 1.0.0" HorizontalOptions="Center" TextColor="{DynamicResource TertiaryTextColor}" FontSize="12" />
+            <Button Text="{Binding CurrentState, Converter={StaticResource AuthButtonTextConverter}}"
+                     Command="{Binding SubmitCommand}"
+                     Style="{StaticResource PrimaryButtonStyle}"
+                     Margin="0,20,0,0"/>
+
+            <Button Text="Forgot Password?"
+                     Command="{Binding ForgotPasswordCommand}"
+                     IsVisible="{Binding ShowPasswordSection}"
+                     HorizontalOptions="Center"
+                     Style="{StaticResource TextButtonStyle}" Margin="0,10,0,0"/>
+
         </VerticalStackLayout>
-    </Grid>
+    </ScrollView>
 </ContentPage>
