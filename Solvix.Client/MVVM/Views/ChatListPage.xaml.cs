@@ -1,21 +1,22 @@
 ﻿using Solvix.Client.MVVM.ViewModels;
 
-namespace Solvix.Client.MVVM.Views;
-
-public partial class ChatListPage : ContentPage
+namespace Solvix.Client.MVVM.Views
 {
-    private readonly ChatListViewModel _viewModel;
-
-    public ChatListPage(ChatListViewModel viewModel)
+    public partial class ChatListPage : ContentPage
     {
-        InitializeComponent();
-        _viewModel = viewModel;
-        BindingContext = _viewModel;
-    }
+        private readonly ChatListViewModel _viewModel;
 
-    protected override async void OnAppearing()
-    {
-        base.OnAppearing();
-        await _viewModel.OnAppearingAsync();
+        public ChatListPage(ChatListViewModel viewModel)
+        {
+            InitializeComponent();
+            _viewModel = viewModel;
+            BindingContext = _viewModel;
+        }
+
+        protected override async void OnAppearing()
+        {
+            base.OnAppearing();
+            await _viewModel.OnAppearingAsync();
+        }
     }
 }

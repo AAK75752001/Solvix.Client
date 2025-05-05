@@ -2,49 +2,42 @@
 
 namespace Solvix.Client.Resources.Themes
 {
-    public class LightThemeResources : ResourceDictionary
+    public partial class LightThemeResources : ResourceDictionary
     {
         public LightThemeResources()
         {
-            // App Theme Colors - Modern light theme with gradients
-            this["PrimaryColor"] = Color.FromArgb("#8A2BE2");        // Vibrant Purple (same as dark)
-            this["SecondaryColor"] = Color.FromArgb("#E0E0FF");      // Light lavender
-            this["TertiaryColor"] = Color.FromArgb("#FF9EFF");       // Light magenta
-            this["AccentColor"] = Color.FromArgb("#00C07F");         // Green
 
-            // Page and Controls
-            this["PageBackgroundColor"] = Color.FromArgb("#F6F6F6");  // Near white
-            this["CardBackgroundColor"] = Colors.White;
-            this["FrameBorderColor"] = Color.FromArgb("#E0E0E0");     // Light gray border
+            // رنگ‌های پایه تم روشن
+            this["PrimaryColor"] = Color.FromArgb("#6200EE");        // بنفش استاندارد متریال
+            this["SecondaryColor"] = Color.FromArgb("#03DAC6");      // Teal استاندارد متریال
+            this["TertiaryColor"] = Color.FromArgb("#3700B3");       // بنفش تیره‌تر
+            this["AccentColor"] = Color.FromArgb("#018786");         // Teal تیره‌تر
 
-            // Text Colors
-            this["PrimaryTextColor"] = Color.FromArgb("#151515");     // Near black
-            this["SecondaryTextColor"] = Color.FromArgb("#555555");   // Dark gray
-            this["TertiaryTextColor"] = Color.FromArgb("#888888");    // Medium gray
-            this["InverseTextColor"] = Colors.White;
+            this["PageBackgroundColor"] = Color.FromArgb("#FFFFFF");  // سفید
+            this["CardBackgroundColor"] = Color.FromArgb("#F5F5F5");  // خاکستری خیلی روشن
+            this["FrameBorderColor"] = Color.FromArgb("#E0E0E0");
 
-            // Other UI Elements
-            this["SeparatorColor"] = Color.FromArgb("#EEEEEE");      // Separator color
-            this["ShadowColor"] = Color.FromArgb("#22000000");       // Light shadow
-            this["SuccessColor"] = Color.FromArgb("#00C07F");        // Green
-            this["ErrorColor"] = Color.FromArgb("#E53935");          // Red
-            this["WarningColor"] = Color.FromArgb("#FFC107");        // Amber
-            this["InfoColor"] = Color.FromArgb("#2196F3");           // Blue
+            this["PrimaryTextColor"] = Color.FromArgb("#000000");     // مشکی
+            this["SecondaryTextColor"] = Color.FromArgb("#555555");   // خاکستری تیره
+            this["TertiaryTextColor"] = Color.FromArgb("#888888");    // خاکستری متوسط
+            this["InverseTextColor"] = Colors.White;                // سفید
 
-            // Message Bubbles - Modern with subtle gradients
-            this["SentMessageBubbleColor"] = Color.FromArgb("#E1D2FF"); // Light purple
-            this["ReceivedMessageBubbleColor"] = Colors.White;
-            this["SentMessageTextColor"] = Color.FromArgb("#151515");
-            this["ReceivedMessageTextColor"] = Color.FromArgb("#151515");
+            this["SeparatorColor"] = Color.FromArgb("#EEEEEE");
+            this["ShadowColor"] = Color.FromArgb("#22000000");
+            this["SuccessColor"] = Color.FromArgb("#4CAF50");        // سبز
+            this["ErrorColor"] = Color.FromArgb("#B00020");          // قرمز تیره متریال
+            this["WarningColor"] = Color.FromArgb("#FB8C00");        // نارنجی
+            this["InfoColor"] = Color.FromArgb("#1976D2");           // آبی
 
-            // Status colors
-            this["OnlineStatusColor"] = Color.FromArgb("#00C07F");   // Green
-            this["OfflineStatusColor"] = Color.FromArgb("#BDBDBD");  // Gray
+            // رنگ‌های حباب پیام
+            this["SentMessageBubbleColorLight"] = Color.FromArgb("#E1F5FE"); // آبی خیلی روشن
+            this["ReceivedMessageBubbleColorLight"] = Color.FromArgb("#F1F1F1"); // خاکستری روشن
+            this["SentMessageTextColorLight"] = Color.FromArgb("#0D47A1"); // آبی تیره
+            this["ReceivedMessageTextColorLight"] = Color.FromArgb("#151515"); // مشکی
 
-            // Brand colors - for gradients and accents
-            this["GradientStart"] = Color.FromArgb("#8A2BE2");       // Vibrant Purple
-            this["GradientMiddle"] = Color.FromArgb("#FF9EFF");      // Light magenta
-            this["GradientEnd"] = Color.FromArgb("#E0E0FF");         // Light lavender
+            // وضعیت آنلاین/آفلاین
+            this["OnlineStatusColor"] = Color.FromArgb("#4CAF50");   // سبز
+            this["OfflineStatusColor"] = Color.FromArgb("#BDBDBD");  // خاکستری
         }
     }
 }

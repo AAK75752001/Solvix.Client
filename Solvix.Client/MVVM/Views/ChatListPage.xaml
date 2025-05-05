@@ -13,11 +13,8 @@
         <ResourceDictionary>
             <converters:DateTimeToFormattedStringConverter x:Key="DateTimeFormatter" />
             <toolkit:IntToBoolConverter x:Key="IntToBoolConverter"/>
-            <converters:BoolToColorConverter x:Key="OnlineStatusColorConverter" />
+            <converters:BoolToColorConverter x:Key="OnlineStatusColorConverter" TrueColor="{StaticResource OnlineStatusColor}" FalseColor="{StaticResource OfflineStatusColor}" />
             <toolkit:InvertedBoolConverter x:Key="InverseBoolConverter" />
-            <converters:IsOwnMessageToAlignmentConverter x:Key="MessageAlignmentConverter"/>
-            <converters:MessageStatusToIconConverter x:Key="StatusIconConverter"/>
-            <converters:MessageStatusToOpacityConverter x:Key="StatusOpacityConverter"/>
 
             <Style x:Key="ChatItemBorderStyle" TargetType="Border">
                 <Setter Property="Padding" Value="10, 12"/>
@@ -99,37 +96,13 @@
                 <Setter Property="VerticalTextAlignment" Value="Center"/>
                 <Setter Property="FontAttributes" Value="Bold"/>
             </Style>
-            <Style x:Key="MessageBubbleFrameStyle" TargetType="Frame">
-                <Setter Property="Padding" Value="10,8"/>
-                <Setter Property="Margin" Value="5,3"/>
-                <Setter Property="CornerRadius" Value="15"/>
-                <Setter Property="HasShadow" Value="False"/>
-                <Setter Property="MaximumWidthRequest" Value="{OnPlatform WinUI=400, Android=300, iOS=300}"/>
-            </Style>
-            <Style x:Key="MessageTextStyle" TargetType="Label">
-                <Setter Property="FontSize" Value="15"/>
-            </Style>
-            <Style x:Key="MessageTimeStyle" TargetType="Label">
-                <Setter Property="FontSize" Value="11"/>
-                <Setter Property="TextColor" Value="{DynamicResource TertiaryTextColor}"/>
-                <Setter Property="HorizontalOptions" Value="End"/>
-                <Setter Property="VerticalOptions" Value="End"/>
-                <Setter Property="Margin" Value="5,0,0,0"/>
-            </Style>
-            <Style x:Key="MessageStatusIconStyle" TargetType="Label">
-                <Setter Property="FontFamily" Value="MaterialIcons"/>
-                <Setter Property="FontSize" Value="16"/>
-                <Setter Property="Margin" Value="3,0,0,0"/>
-                <Setter Property="VerticalOptions" Value="End"/>
-            </Style>
-
         </ResourceDictionary>
     </ContentPage.Resources>
 
     <ContentPage.ToolbarItems>
         <ToolbarItem Text="جستجو"
                      IconImageSource="{FontImageSource FontFamily=MaterialIcons, Glyph=search, Color={DynamicResource PrimaryTextColor}}"
-                     Command="{Binding SearchChatsCommand}"
+                     Command="{Binding SearchCommand}"
                      Order="Primary" Priority="0"/>
         <ToolbarItem Text="منو"
                      IconImageSource="{FontImageSource FontFamily=MaterialIcons, Glyph=menu, Color={DynamicResource PrimaryTextColor}}"

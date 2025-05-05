@@ -16,59 +16,32 @@
             <converters:MessageStatusToOpacityConverter x:Key="StatusOpacityConverter"/>
             <toolkit:IntToBoolConverter x:Key="IntToBoolConverter"/>
             <toolkit:InvertedBoolConverter x:Key="InverseBoolConverter" />
-            <converters:BoolToColorConverter x:Key="StatusColorConverter"/>
+            <converters:BoolToColorConverter x:Key="StatusColorConverter" TrueColor="{StaticResource PrimaryColor}" FalseColor="{DynamicResource TertiaryTextColor}"/>
+
             <Style x:Key="MessageBubbleBorderStyle" TargetType="Border">
                 <Setter Property="Padding" Value="10,8"/>
-                <Setter Property="Margin" Value="5,3,50,3"/>
-                <Setter Property="HasShadow" Value="False"/>
+                <Setter Property="Margin" Value="5,3"/>
                 <Setter Property="MaximumWidthRequest" Value="{OnPlatform WinUI=450, Android=320, iOS=320}"/>
+                <Setter Property="StrokeThickness" Value="0"/>
                 <Setter Property="HorizontalOptions" Value="Start"/>
-                <Setter Property="StrokeShape">
-                    <RoundRectangle CornerRadius="15,15,15,5"/>
-                </Setter>
-                <Setter Property="BackgroundColor" Value="{Binding IsOwnMessage, Converter={StaticResource MessageAlignmentConverter}, ConverterParameter=BgColor}"/>
-                <Setter Property="VisualStateManager.VisualStateGroups">
-                    <VisualStateGroupList>
-                        <VisualStateGroup Name="AlignmentStates">
-                            <VisualState Name="OwnMessage">
-                                <VisualState.Setters>
-                                    <Setter Property="HorizontalOptions" Value="End"/>
-                                    <Setter Property="Margin" Value="50,3,5,3"/>
-                                    <Setter Property="StrokeShape">
-                                        <RoundRectangle CornerRadius="15,15,5,15"/>
-                                    </Setter>
-                                </VisualState.Setters>
-                            </VisualState>
-                            <VisualState Name="OtherMessage">
-                                <VisualState.Setters>
-                                    <Setter Property="HorizontalOptions" Value="Start"/>
-                                    <Setter Property="Margin" Value="5,3,50,3"/>
-                                    <Setter Property="StrokeShape">
-                                        <RoundRectangle CornerRadius="15,15,15,5"/>
-                                    </Setter>
-                                </VisualState.Setters>
-                            </VisualState>
-                        </VisualStateGroup>
-                    </VisualStateGroupList>
-                </Setter>
+                <Setter Property="Margin" Value="5,3,50,3"/>
+                <Setter Property="StrokeShape" Value="{RoundRectangle CornerRadius='15,15,15,5'}"/>
+                <Setter Property="BackgroundColor" Value="{DynamicResource ReceivedMessageBubbleColor}"/>
             </Style>
-
             <Style x:Key="MessageTextStyle" TargetType="Label">
                 <Setter Property="FontSize" Value="15"/>
-                <Setter Property="TextColor" Value="{Binding IsOwnMessage, Converter={StaticResource MessageAlignmentConverter}, ConverterParameter=TextColor}"/>
                 <Setter Property="HorizontalOptions" Value="Start"/>
                 <Setter Property="HorizontalTextAlignment" Value="Start"/>
+                <Setter Property="TextColor" Value="{DynamicResource ReceivedMessageTextColor}"/>
             </Style>
-
             <Style x:Key="MessageTimeStyle" TargetType="Label">
                 <Setter Property="FontSize" Value="11"/>
-                <Setter Property="TextColor" Value="{Binding IsOwnMessage, Converter={StaticResource MessageAlignmentConverter}, ConverterParameter=TextColor, TargetNullValue={DynamicResource TertiaryTextColor}, FallbackValue={DynamicResource TertiaryTextColor}}"/>
+                <Setter Property="TextColor" Value="{DynamicResource TertiaryTextColor}"/>
                 <Setter Property="Opacity" Value="0.7"/>
                 <Setter Property="HorizontalOptions" Value="End"/>
                 <Setter Property="VerticalOptions" Value="End"/>
                 <Setter Property="Margin" Value="8,0,0,0"/>
             </Style>
-
             <Style x:Key="MessageStatusIconStyle" TargetType="Label">
                 <Setter Property="FontFamily" Value="MaterialIcons"/>
                 <Setter Property="FontSize" Value="16"/>
@@ -77,7 +50,6 @@
                 <Setter Property="TextColor" Value="{Binding Status, Converter={StaticResource StatusColorConverter}}"/>
                 <Setter Property="Opacity" Value="{Binding Status, Converter={StaticResource StatusOpacityConverter}}"/>
             </Style>
-
             <Style x:Key="ChatInputBorderStyle" TargetType="Border">
                 <Setter Property="Stroke" Value="{DynamicResource FrameBorderColor}"/>
                 <Setter Property="StrokeThickness" Value="1"/>
@@ -113,7 +85,6 @@
                 <Setter Property="BackgroundColor" Value="{DynamicResource PrimaryColor}"/>
                 <Setter Property="TextColor" Value="{DynamicResource InverseTextColor}"/>
             </Style>
-
         </ResourceDictionary>
     </ContentPage.Resources>
 
@@ -124,7 +95,6 @@
                       Command="{Binding GoToChatSettingsCommand}"/>
     </ContentPage.ToolbarItems>
 
-
     <Grid RowDefinitions="*, Auto" ColumnDefinitions="*" BackgroundColor="{DynamicResource PageBackgroundColor}">
 
         <ActivityIndicator Grid.Row="0" Grid.Column="0"
@@ -134,66 +104,43 @@
                            Color="{DynamicResource PrimaryColor}"/>
 
         <CollectionView Grid.Row="0" Grid.Column="0"
+                        x:Name="MessagesCollectionView"
                         ItemsSource="{Binding Messages}"
                         SelectionMode="None"
                         VerticalOptions="FillAndExpand"
                         Margin="5"
-                        ItemsUpdatingScrollMode="KeepLastItemInView">
+                        ItemsUpdatingScrollMode="KeepItemsInView">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="model:MessageModel">
-                    <Border Style="{StaticResource MessageBubbleBorderStyle}">
-                        <VisualStateManager.VisualStateGroups>
-                            <VisualStateGroup Name="AlignmentStates">
-                                <VisualState Name="OwnMessage">
-                                    <VisualState.Setters>
-                                        <Setter Property="HorizontalOptions" Value="End"/>
-                                        <Setter Property="Margin" Value="50,3,5,3"/>
-                                        <Setter Property="StrokeShape" Value="{RoundRectangle CornerRadius='15,15,5,15'}"/>
-                                    </VisualState.Setters>
-                                </VisualState>
-                                <VisualState Name="OtherMessage">
-                                    <VisualState.Setters>
-                                        <Setter Property="HorizontalOptions" Value="Start"/>
-                                        <Setter Property="Margin" Value="5,3,50,3"/>
-                                        <Setter Property="StrokeShape" Value="{RoundRectangle CornerRadius='15,15,15,5'}"/>
-                                    </VisualState.Setters>
-                                </VisualState>
-                            </VisualStateGroup>
-                        </VisualStateManager.VisualStateGroups>
-                        <VisualStateManager.VisualStateGroups>
-                            <VisualStateGroup>
-                                <VisualState Name="OwnMessageState" BasedOn="{StaticResource OwnMessage}"/>
-                                <VisualState Name="OtherMessageState" BasedOn="{StaticResource OtherMessage}"/>
-                            </VisualStateGroup>
-                        </VisualStateManager.VisualStateGroups>
-                        <Border.Triggers>
-                            <DataTrigger TargetType="Border" Binding="{Binding IsOwnMessage}" Value="True">
-                                <Setter Property="VisualStateManager.VisualStateGroups" Value="{StaticResource OwnMessageState}"/>
-                            </DataTrigger>
-                            <DataTrigger TargetType="Border" Binding="{Binding IsOwnMessage}" Value="False">
-                                <Setter Property="VisualStateManager.VisualStateGroups" Value="{StaticResource OtherMessageState}"/>
-                            </DataTrigger>
-                        </Border.Triggers>
-
-
-                        <StackLayout Orientation="Vertical" Spacing="2">
-                            <Label Text="{Binding Content}"
-                                   Style="{StaticResource MessageTextStyle}"
-                                   LineBreakMode="WordWrap"/>
-                            <StackLayout Orientation="Horizontal" HorizontalOptions="End">
-                                <Label Text="{Binding LocalSentAt, StringFormat='{0:HH:mm}'}" Style="{StaticResource MessageTimeStyle}"/>
-                                <Label IsVisible="{Binding IsOwnMessage}"
-                                        Text="{Binding Status, Converter={StaticResource StatusIconConverter}}"
-                                        Opacity="{Binding Status, Converter={StaticResource StatusOpacityConverter}}"
-                                        Style="{StaticResource MessageStatusIconStyle}"/>
+                    <Grid Margin="0,2">
+                        <Border Style="{StaticResource MessageBubbleBorderStyle}">
+                            <Border.Triggers>
+                                <DataTrigger TargetType="Border" Binding="{Binding IsOwnMessage}" Value="True">
+                                    <Setter Property="HorizontalOptions" Value="End"/>
+                                    <Setter Property="Margin" Value="50,3,5,3"/>
+                                    <Setter Property="StrokeShape" Value="{RoundRectangle CornerRadius='15,15,5,15'}"/>
+                                    <Setter Property="BackgroundColor" Value="{DynamicResource SentMessageBubbleColor}"/>
+                                </DataTrigger>
+                            </Border.Triggers>
+                            <StackLayout Orientation="Vertical" Spacing="2">
+                                <Label Text="{Binding Content}" Style="{StaticResource MessageTextStyle}" LineBreakMode="WordWrap">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" Binding="{Binding IsOwnMessage}" Value="True">
+                                            <Setter Property="TextColor" Value="{DynamicResource SentMessageTextColor}"/>
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+                                <StackLayout Orientation="Horizontal" HorizontalOptions="End" Spacing="3">
+                                    <Label Text="{Binding LocalSentAt, StringFormat='{0:HH:mm}'}" Style="{StaticResource MessageTimeStyle}"/>
+                                    <Label IsVisible="{Binding IsOwnMessage}" Text="{Binding Status, Converter={StaticResource StatusIconConverter}}" Style="{StaticResource MessageStatusIconStyle}"/>
+                                </StackLayout>
                             </StackLayout>
-                        </StackLayout>
-                    </Border>
+                        </Border>
+                    </Grid>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
             <CollectionView.Header>
-                <ActivityIndicator IsRunning="{Binding IsLoadingMessages}" IsVisible="{Binding IsLoadingMessages}"
-                                    Margin="0,10" Color="{DynamicResource PrimaryColor}"/>
+                <ActivityIndicator IsRunning="{Binding IsLoadingMessages}" IsVisible="{Binding IsLoadingMessages}" Margin="0,10" Color="{DynamicResource PrimaryColor}"/>
             </CollectionView.Header>
         </CollectionView>
 
@@ -217,5 +164,6 @@
                 </Button>
             </Grid>
         </Border>
+
     </Grid>
 </ContentPage>
