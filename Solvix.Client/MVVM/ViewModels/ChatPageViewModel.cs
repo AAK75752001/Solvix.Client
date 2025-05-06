@@ -156,6 +156,7 @@ namespace Solvix.Client.MVVM.ViewModels
             }
             finally
             {
+
                 IsLoadingMessages = false;
             }
         }
