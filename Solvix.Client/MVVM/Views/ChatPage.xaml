@@ -20,36 +20,19 @@
             <Style x:Key="MessageBubbleBorderStyle" TargetType="Border">
                 <Setter Property="Padding" Value="10,8"/>
                 <Setter Property="Margin" Value="5,3,50,3"/>
-                <Setter Property="HasShadow" Value="False"/>
+                <!-- ویژگی HasShadow حذف شد -->
                 <Setter Property="MaximumWidthRequest" Value="{OnPlatform WinUI=450, Android=320, iOS=320}"/>
                 <Setter Property="HorizontalOptions" Value="Start"/>
                 <Setter Property="StrokeShape">
                     <RoundRectangle CornerRadius="15,15,15,5"/>
                 </Setter>
                 <Setter Property="BackgroundColor" Value="{Binding IsOwnMessage, Converter={StaticResource MessageAlignmentConverter}, ConverterParameter=BgColor}"/>
-                <Setter Property="VisualStateManager.VisualStateGroups">
-                    <VisualStateGroupList>
-                        <VisualStateGroup Name="AlignmentStates">
-                            <VisualState Name="OwnMessage">
-                                <VisualState.Setters>
-                                    <Setter Property="HorizontalOptions" Value="End"/>
-                                    <Setter Property="Margin" Value="50,3,5,3"/>
-                                    <Setter Property="StrokeShape">
-                                        <RoundRectangle CornerRadius="15,15,5,15"/>
-                                    </Setter>
-                                </VisualState.Setters>
-                            </VisualState>
-                            <VisualState Name="OtherMessage">
-                                <VisualState.Setters>
-                                    <Setter Property="HorizontalOptions" Value="Start"/>
-                                    <Setter Property="Margin" Value="5,3,50,3"/>
-                                    <Setter Property="StrokeShape">
-                                        <RoundRectangle CornerRadius="15,15,15,5"/>
-                                    </Setter>
-                                </VisualState.Setters>
-                            </VisualState>
-                        </VisualStateGroup>
-                    </VisualStateGroupList>
+                <!-- اگر به سایه نیاز دارید، از خاصیت Shadow استفاده کنید -->
+                <Setter Property="Shadow">
+                    <Shadow Brush="{DynamicResource ShadowColor}" 
+                            Offset="2,2" 
+                            Opacity="0.2" 
+                            Radius="4" />
                 </Setter>
             </Style>
 
@@ -114,6 +97,28 @@
                 <Setter Property="TextColor" Value="{DynamicResource InverseTextColor}"/>
             </Style>
 
+            <!-- Status Bar Styles -->
+            <Style x:Key="StatusBarStyle" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="{DynamicResource CardBackgroundColor}"/>
+                <Setter Property="Padding" Value="10,5"/>
+                <Setter Property="Margin" Value="0,0,0,2"/>
+                <Setter Property="StrokeThickness" Value="0"/>
+                <Setter Property="Opacity" Value="0.9"/>
+            </Style>
+            <Style x:Key="StatusTextStyle" TargetType="Label">
+                <Setter Property="TextColor" Value="{DynamicResource SecondaryTextColor}"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="VerticalOptions" Value="Center"/>
+                <Setter Property="HorizontalOptions" Value="Start"/>
+            </Style>
+            <Style x:Key="StatusIconStyle" TargetType="Label">
+                <Setter Property="FontFamily" Value="MaterialIcons"/>
+                <Setter Property="FontSize" Value="16"/>
+                <Setter Property="TextColor" Value="{DynamicResource SecondaryTextColor}"/>
+                <Setter Property="VerticalOptions" Value="Center"/>
+                <Setter Property="Margin" Value="0,0,5,0"/>
+            </Style>
+
         </ResourceDictionary>
     </ContentPage.Resources>
 
@@ -124,8 +129,7 @@
                       Command="{Binding GoToChatSettingsCommand}"/>
     </ContentPage.ToolbarItems>
 
-
-    <Grid RowDefinitions="*, Auto" ColumnDefinitions="*" BackgroundColor="{DynamicResource PageBackgroundColor}">
+    <Grid RowDefinitions="*, Auto, Auto" ColumnDefinitions="*" BackgroundColor="{DynamicResource PageBackgroundColor}">
 
         <ActivityIndicator Grid.Row="0" Grid.Column="0"
                            IsRunning="{Binding IsLoadingMessages}"
@@ -142,39 +146,22 @@
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="model:MessageModel">
                     <Border Style="{StaticResource MessageBubbleBorderStyle}">
-                        <VisualStateManager.VisualStateGroups>
-                            <VisualStateGroup Name="AlignmentStates">
-                                <VisualState Name="OwnMessage">
-                                    <VisualState.Setters>
-                                        <Setter Property="HorizontalOptions" Value="End"/>
-                                        <Setter Property="Margin" Value="50,3,5,3"/>
-                                        <Setter Property="StrokeShape" Value="{RoundRectangle CornerRadius='15,15,5,15'}"/>
-                                    </VisualState.Setters>
-                                </VisualState>
-                                <VisualState Name="OtherMessage">
-                                    <VisualState.Setters>
-                                        <Setter Property="HorizontalOptions" Value="Start"/>
-                                        <Setter Property="Margin" Value="5,3,50,3"/>
-                                        <Setter Property="StrokeShape" Value="{RoundRectangle CornerRadius='15,15,15,5'}"/>
-                                    </VisualState.Setters>
-                                </VisualState>
-                            </VisualStateGroup>
-                        </VisualStateManager.VisualStateGroups>
-                        <VisualStateManager.VisualStateGroups>
-                            <VisualStateGroup>
-                                <VisualState Name="OwnMessageState" BasedOn="{StaticResource OwnMessage}"/>
-                                <VisualState Name="OtherMessageState" BasedOn="{StaticResource OtherMessage}"/>
-                            </VisualStateGroup>
-                        </VisualStateManager.VisualStateGroups>
                         <Border.Triggers>
                             <DataTrigger TargetType="Border" Binding="{Binding IsOwnMessage}" Value="True">
-                                <Setter Property="VisualStateManager.VisualStateGroups" Value="{StaticResource OwnMessageState}"/>
+                                <Setter Property="HorizontalOptions" Value="End"/>
+                                <Setter Property="Margin" Value="50,3,5,3"/>
+                                <Setter Property="StrokeShape">
+                                    <RoundRectangle CornerRadius="15,15,5,15"/>
+                                </Setter>
                             </DataTrigger>
                             <DataTrigger TargetType="Border" Binding="{Binding IsOwnMessage}" Value="False">
-                                <Setter Property="VisualStateManager.VisualStateGroups" Value="{StaticResource OtherMessageState}"/>
+                                <Setter Property="HorizontalOptions" Value="Start"/>
+                                <Setter Property="Margin" Value="5,3,50,3"/>
+                                <Setter Property="StrokeShape">
+                                    <RoundRectangle CornerRadius="15,15,15,5"/>
+                                </Setter>
                             </DataTrigger>
                         </Border.Triggers>
-
 
                         <StackLayout Orientation="Vertical" Spacing="2">
                             <Label Text="{Binding Content}"
@@ -197,10 +184,29 @@
             </CollectionView.Header>
         </CollectionView>
 
-        <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource ChatInputBorderStyle}">
+        <!-- Status Bar for typing and connection status -->
+        <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource StatusBarStyle}"
+                IsVisible="{Binding IsTyping}">
+            <HorizontalStackLayout Spacing="5">
+                <Label Text="keyboard" Style="{StaticResource StatusIconStyle}"/>
+                <Label Text="در حال تایپ..." Style="{StaticResource StatusTextStyle}"/>
+            </HorizontalStackLayout>
+        </Border>
+
+        <!-- Connection Status (visible when not connected) -->
+        <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource StatusBarStyle}"
+                IsVisible="{Binding IsConnected, Converter={StaticResource InverseBoolConverter}}">
+            <HorizontalStackLayout Spacing="5">
+                <Label Text="wifi_off" Style="{StaticResource StatusIconStyle}"/>
+                <Label Text="اتصال به سرور پیام‌رسان برقرار نیست..." Style="{StaticResource StatusTextStyle}"/>
+            </HorizontalStackLayout>
+        </Border>
+
+        <!-- Chat Input Area -->
+        <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource ChatInputBorderStyle}">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="5">
                 <Button Grid.Column="0" Text="attach_file" Command="{Binding AttachFileCommand}" Style="{StaticResource ChatInputButtonStyle}"/>
-                <Editor Grid.Column="1" Text="{Binding NewMessageText, Mode=TwoWay}" Style="{StaticResource ChatInputEditorStyle}" IsEnabled="{Binding IsSendingMessage, Converter={toolkit:InvertedBoolConverter}}"/>
+                <Editor x:Name="MessageEditor" Grid.Column="1" Text="{Binding NewMessageText, Mode=TwoWay}" Style="{StaticResource ChatInputEditorStyle}" IsEnabled="{Binding IsSendingMessage, Converter={StaticResource InverseBoolConverter}}"/>
                 <Button Grid.Column="2" Text="sentiment_satisfied" Command="{Binding EmojiCommand}" Style="{StaticResource ChatInputButtonStyle}"/>
                 <Button Grid.Column="3" Command="{Binding SendMessageCommand}" Style="{StaticResource SendButtonStyle}">
                     <Button.ImageSource>

@@ -61,9 +61,15 @@ namespace Solvix.Client
             services.AddSingleton<INavigationService, NavigationService>();
             services.AddScoped<IChatService, ChatService>();
 
+            // Authentication & Security
+            services.AddSingleton<ITokenManager, TokenManager>();
+            services.AddSingleton<IAuthService, AuthService>();
+
+            // Real-time communication
+            services.AddSingleton<ISignalRService, SignalRService>();
+
             // API-related services
             services.AddSingleton<IApiService, ApiService>();
-            services.AddSingleton<IAuthService, AuthService>();
 
             // Domain services
             services.AddSingleton<IUserService, UserService>();
