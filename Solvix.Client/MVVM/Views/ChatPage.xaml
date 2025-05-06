@@ -17,50 +17,14 @@
             <toolkit:IntToBoolConverter x:Key="IntToBoolConverter"/>
             <toolkit:InvertedBoolConverter x:Key="InverseBoolConverter" />
             <converters:BoolToColorConverter x:Key="StatusColorConverter"/>
-            <Style x:Key="MessageBubbleBorderStyle" TargetType="Border">
-                <Setter Property="Padding" Value="10,8"/>
-                <Setter Property="Margin" Value="5,3,50,3"/>
-                <!-- ویژگی HasShadow حذف شد -->
-                <Setter Property="MaximumWidthRequest" Value="{OnPlatform WinUI=450, Android=320, iOS=320}"/>
-                <Setter Property="HorizontalOptions" Value="Start"/>
-                <Setter Property="StrokeShape">
-                    <RoundRectangle CornerRadius="15,15,15,5"/>
-                </Setter>
-                <Setter Property="BackgroundColor" Value="{Binding IsOwnMessage, Converter={StaticResource MessageAlignmentConverter}, ConverterParameter=BgColor}"/>
-                <!-- اگر به سایه نیاز دارید، از خاصیت Shadow استفاده کنید -->
-                <Setter Property="Shadow">
-                    <Shadow Brush="{DynamicResource ShadowColor}" 
-                            Offset="2,2" 
-                            Opacity="0.2" 
-                            Radius="4" />
-                </Setter>
-            </Style>
 
-            <Style x:Key="MessageTextStyle" TargetType="Label">
-                <Setter Property="FontSize" Value="15"/>
-                <Setter Property="TextColor" Value="{Binding IsOwnMessage, Converter={StaticResource MessageAlignmentConverter}, ConverterParameter=TextColor}"/>
-                <Setter Property="HorizontalOptions" Value="Start"/>
-                <Setter Property="HorizontalTextAlignment" Value="Start"/>
-            </Style>
+            <!-- رنگ‌های حباب پیام -->
+            <Color x:Key="SentMessageBubbleColor">#DCF8C6</Color>
+            <Color x:Key="ReceivedMessageBubbleColor">White</Color>
+            <Color x:Key="SentMessageTextColor">#222222</Color>
+            <Color x:Key="ReceivedMessageTextColor">#222222</Color>
 
-            <Style x:Key="MessageTimeStyle" TargetType="Label">
-                <Setter Property="FontSize" Value="11"/>
-                <Setter Property="TextColor" Value="{Binding IsOwnMessage, Converter={StaticResource MessageAlignmentConverter}, ConverterParameter=TextColor, TargetNullValue={DynamicResource TertiaryTextColor}, FallbackValue={DynamicResource TertiaryTextColor}}"/>
-                <Setter Property="Opacity" Value="0.7"/>
-                <Setter Property="HorizontalOptions" Value="End"/>
-                <Setter Property="VerticalOptions" Value="End"/>
-                <Setter Property="Margin" Value="8,0,0,0"/>
-            </Style>
-
-            <Style x:Key="MessageStatusIconStyle" TargetType="Label">
-                <Setter Property="FontFamily" Value="MaterialIcons"/>
-                <Setter Property="FontSize" Value="16"/>
-                <Setter Property="Margin" Value="3,-2,0,0"/>
-                <Setter Property="VerticalOptions" Value="End"/>
-                <Setter Property="TextColor" Value="{Binding Status, Converter={StaticResource StatusColorConverter}}"/>
-                <Setter Property="Opacity" Value="{Binding Status, Converter={StaticResource StatusOpacityConverter}}"/>
-            </Style>
-
+            <!-- استایل‌های کاربردی -->
             <Style x:Key="ChatInputBorderStyle" TargetType="Border">
                 <Setter Property="Stroke" Value="{DynamicResource FrameBorderColor}"/>
                 <Setter Property="StrokeThickness" Value="1"/>
@@ -118,7 +82,6 @@
                 <Setter Property="VerticalOptions" Value="Center"/>
                 <Setter Property="Margin" Value="0,0,5,0"/>
             </Style>
-
         </ResourceDictionary>
     </ContentPage.Resources>
 
@@ -145,37 +108,79 @@
                         ItemsUpdatingScrollMode="KeepLastItemInView">
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="model:MessageModel">
-                    <Border Style="{StaticResource MessageBubbleBorderStyle}">
-                        <Border.Triggers>
-                            <DataTrigger TargetType="Border" Binding="{Binding IsOwnMessage}" Value="True">
-                                <Setter Property="HorizontalOptions" Value="End"/>
-                                <Setter Property="Margin" Value="50,3,5,3"/>
-                                <Setter Property="StrokeShape">
-                                    <RoundRectangle CornerRadius="15,15,5,15"/>
-                                </Setter>
-                            </DataTrigger>
-                            <DataTrigger TargetType="Border" Binding="{Binding IsOwnMessage}" Value="False">
-                                <Setter Property="HorizontalOptions" Value="Start"/>
-                                <Setter Property="Margin" Value="5,3,50,3"/>
-                                <Setter Property="StrokeShape">
-                                    <RoundRectangle CornerRadius="15,15,15,5"/>
-                                </Setter>
-                            </DataTrigger>
-                        </Border.Triggers>
+                    <!-- استفاده از یک Grid برای کل ردیف پیام -->
+                    <Grid Padding="8,4" ColumnSpacing="0">
+                        <Grid.ColumnDefinitions>
+                            <!-- ستون سمت چپ برای پیام‌های دریافتی -->
+                            <ColumnDefinition Width="*" />
+                            <!-- ستون سمت راست برای پیام‌های ارسالی -->
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
 
-                        <StackLayout Orientation="Vertical" Spacing="2">
-                            <Label Text="{Binding Content}"
-                                   Style="{StaticResource MessageTextStyle}"
-                                   LineBreakMode="WordWrap"/>
-                            <StackLayout Orientation="Horizontal" HorizontalOptions="End">
-                                <Label Text="{Binding LocalSentAt, StringFormat='{0:HH:mm}'}" Style="{StaticResource MessageTimeStyle}"/>
-                                <Label IsVisible="{Binding IsOwnMessage}"
-                                        Text="{Binding Status, Converter={StaticResource StatusIconConverter}}"
-                                        Opacity="{Binding Status, Converter={StaticResource StatusOpacityConverter}}"
-                                        Style="{StaticResource MessageStatusIconStyle}"/>
+                        <!-- پیام دریافتی (سمت چپ) -->
+                        <Border Grid.Column="0" 
+                                BackgroundColor="{StaticResource ReceivedMessageBubbleColor}"
+                                Padding="12,8" 
+                                Margin="0,0,50,0"
+                                StrokeShape="RoundRectangle 15,15,15,5"
+                                IsVisible="{Binding IsOwnMessage, Converter={StaticResource InverseBoolConverter}}"
+                                HorizontalOptions="Start">
+                            <Border.Shadow>
+                                <Shadow Brush="{DynamicResource ShadowColor}" 
+                                        Offset="1,1" 
+                                        Opacity="0.1" 
+                                        Radius="3" />
+                            </Border.Shadow>
+                            <StackLayout Spacing="2">
+                                <Label Text="{Binding Content}"
+                                       TextColor="{StaticResource ReceivedMessageTextColor}"
+                                       FontSize="15"
+                                       LineBreakMode="WordWrap" />
+                                <Label Text="{Binding LocalSentAt, StringFormat='{0:HH:mm}'}"
+                                       TextColor="{DynamicResource TertiaryTextColor}"
+                                       Opacity="0.7"
+                                       FontSize="11"
+                                       HorizontalOptions="End" />
                             </StackLayout>
-                        </StackLayout>
-                    </Border>
+                        </Border>
+
+                        <!-- پیام ارسالی (سمت راست) -->
+                        <Border Grid.Column="1" 
+                                BackgroundColor="{StaticResource SentMessageBubbleColor}"
+                                Padding="12,8" 
+                                Margin="50,0,0,0"
+                                StrokeShape="RoundRectangle 15,15,5,15"
+                                IsVisible="{Binding IsOwnMessage}"
+                                HorizontalOptions="End">
+                            <Border.Shadow>
+                                <Shadow Brush="{DynamicResource ShadowColor}" 
+                                        Offset="1,1" 
+                                        Opacity="0.1" 
+                                        Radius="3" />
+                            </Border.Shadow>
+                            <StackLayout Spacing="2">
+                                <Label Text="{Binding Content}"
+                                       TextColor="{StaticResource SentMessageTextColor}"
+                                       FontSize="15"
+                                       LineBreakMode="WordWrap" />
+                                <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="4" HorizontalOptions="End">
+                                    <Label Grid.Column="0" 
+                                           Text="{Binding LocalSentAt, StringFormat='{0:HH:mm}'}"
+                                           TextColor="{StaticResource SentMessageTextColor}"
+                                           Opacity="0.7"
+                                           FontSize="11" />
+                                    <Label Grid.Column="1" 
+                                           Text="{Binding Status, Converter={StaticResource StatusIconConverter}}"
+                                           TextColor="{StaticResource SentMessageTextColor}"
+                                           Opacity="{Binding Status, Converter={StaticResource StatusOpacityConverter}}"
+                                           FontFamily="MaterialIcons"
+                                           FontSize="16"
+                                           Margin="2,-2,0,0"
+                                           VerticalOptions="End" />
+                                </Grid>
+                            </StackLayout>
+                        </Border>
+                    </Grid>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
             <CollectionView.Header>

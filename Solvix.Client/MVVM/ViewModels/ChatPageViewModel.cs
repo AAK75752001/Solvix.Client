@@ -126,14 +126,12 @@ namespace Solvix.Client.MVVM.ViewModels
 
             try
             {
-                // ابتدا تلاش می‌کنیم از طریق SignalR ارسال کنیم
                 bool signalRSuccess = false;
                 if (_signalRService.IsConnected)
                 {
                     signalRSuccess = await _signalRService.SendMessageAsync(optimisticMessage);
                 }
 
-                // اگر SignalR موفق نبود، از طریق API ارسال می‌کنیم
                 if (!signalRSuccess)
                 {
                     var sentMessageDto = await _chatService.SendMessageAsync(ActualChatId, messageContentToSend);
@@ -141,7 +139,6 @@ namespace Solvix.Client.MVVM.ViewModels
                 }
                 else
                 {
-                    // پیام با موفقیت از طریق SignalR ارسال شد، وضعیت را به "ارسال‌شده" تغییر می‌دهیم
                     optimisticMessage.Status = Constants.MessageStatus.Sent;
                 }
             }
@@ -415,27 +412,55 @@ namespace Solvix.Client.MVVM.ViewModels
 
         private void UpdateSentMessageStatus(MessageModel optimisticMessage, MessageModel? serverMessage)
         {
-            var messageToUpdate = Messages.FirstOrDefault(m => m.CorrelationId == optimisticMessage.CorrelationId);
-            if (messageToUpdate != null)
-            {
-                if (serverMessage != null)
+            MainThread.BeginInvokeOnMainThread(() => {
+                var messageToUpdate = Messages.FirstOrDefault(m => m.CorrelationId == optimisticMessage.CorrelationId);
+                if (messageToUpdate != null)
                 {
-                    messageToUpdate.Id = serverMessage.Id;
-                    messageToUpdate.Status = Constants.MessageStatus.Sent;
-                    messageToUpdate.SentAt = serverMessage.SentAt;
-                    messageToUpdate.CorrelationId = string.Empty;
-                    _logger.LogInformation("Optimistic message updated with server info. ID: {Id}", serverMessage.Id);
+                    if (serverMessage != null)
+                    {
+                        // به‌روزرسانی با اطلاعات سرور
+                        messageToUpdate.Id = serverMessage.Id;
+                        messageToUpdate.Status = Constants.MessageStatus.Sent; // تغییر به وضعیت ارسال شده
+                        messageToUpdate.SentAt = serverMessage.SentAt;
+                        messageToUpdate.CorrelationId = string.Empty;
+                        _logger.LogInformation("Optimistic message updated with server info. ID: {Id}", serverMessage.Id);
+
+                        // برای تست، بعد از چند ثانیه به حالت تحویل داده شده تغییر می‌دهیم
+                        var timer = Application.Current!.Dispatcher.CreateTimer();
+                        timer.Interval = TimeSpan.FromSeconds(2);
+                        timer.Tick += (s, e) => {
+                            MainThread.BeginInvokeOnMainThread(() => {
+                                messageToUpdate.Status = Constants.MessageStatus.Delivered;
+                                OnPropertyChanged(nameof(Messages)); // مهم: بروزرسانی UI
+                            });
+                            timer.Stop();
+                        };
+                        timer.Start();
+
+                        // و بعد از چند ثانیه بیشتر به حالت خوانده شده تغییر می‌دهیم
+                        var timer2 = Application.Current!.Dispatcher.CreateTimer();
+                        timer2.Interval = TimeSpan.FromSeconds(5);
+                        timer2.Tick += (s, e) => {
+                            MainThread.BeginInvokeOnMainThread(() => {
+                                messageToUpdate.Status = Constants.MessageStatus.Read;
+                                OnPropertyChanged(nameof(Messages)); // مهم: بروزرسانی UI
+                            });
+                            timer2.Stop();
+                        };
+                        timer2.Start();
+                    }
+                    else
+                    {
+                        messageToUpdate.Status = Constants.MessageStatus.Failed;
+                        OnPropertyChanged(nameof(Messages)); // مهم: بروزرسانی UI
+                        _logger.LogWarning("SendMessageAsync returned null, marking optimistic message as Failed. CorrelationId: {CorrId}", optimisticMessage.CorrelationId);
+                    }
                 }
                 else
                 {
-                    messageToUpdate.Status = Constants.MessageStatus.Failed;
-                    _logger.LogWarning("SendMessageAsync returned null, marking optimistic message as Failed. CorrelationId: {CorrId}", optimisticMessage.CorrelationId);
+                    _logger.LogWarning("Could not find optimistic message to update. CorrelationId: {CorrId}", optimisticMessage.CorrelationId);
                 }
-            }
-            else
-            {
-                _logger.LogWarning("Could not find optimistic message to update. CorrelationId: {CorrId}", optimisticMessage.CorrelationId);
-            }
+            });
         }
 
         private async void HandleMessageSendError(Exception ex, MessageModel optimisticMessage)

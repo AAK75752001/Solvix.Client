@@ -43,10 +43,10 @@ namespace Solvix.Client.Core.Helpers
                 return status switch
                 {
                     Constants.MessageStatus.Failed => "❌",
-                    Constants.MessageStatus.Sending => "⏱️", 
-                    Constants.MessageStatus.Sent => "✓",   
-                    Constants.MessageStatus.Delivered => "✓✓", 
-                    Constants.MessageStatus.Read => "✓✓",  
+                    Constants.MessageStatus.Sending => "⏱️",
+                    Constants.MessageStatus.Sent => "✓",
+                    Constants.MessageStatus.Delivered => "✓✓",
+                    Constants.MessageStatus.Read => "✓✓",
                     _ => "⏱️"
                 };
             }
