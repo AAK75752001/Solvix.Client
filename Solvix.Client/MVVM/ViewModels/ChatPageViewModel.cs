@@ -4,9 +4,7 @@ using Microsoft.Extensions.Logging;
 using Solvix.Client.Core;
 using Solvix.Client.Core.Interfaces;
 using Solvix.Client.Core.Models;
-using System;
 using System.Collections.ObjectModel;
-
 
 namespace Solvix.Client.MVVM.ViewModels
 {
@@ -23,6 +21,7 @@ namespace Solvix.Client.MVVM.ViewModels
         #region Private Fields
         private long _currentUserId;
         private string? _chatIdString;
+        private bool _isInitialized = false;
         #endregion
 
         #region Observable Properties
@@ -105,11 +104,11 @@ namespace Solvix.Client.MVVM.ViewModels
 
             var optimisticMessage = CreateOptimisticMessage(messageContentToSend);
             Messages.Add(optimisticMessage);
-            ScrollToLastMessage();
 
             try
             {
                 var sentMessageDto = await _chatService.SendMessageAsync(ActualChatId, messageContentToSend);
+
                 UpdateSentMessageStatus(optimisticMessage, sentMessageDto);
             }
             catch (Exception ex)
@@ -136,11 +135,12 @@ namespace Solvix.Client.MVVM.ViewModels
 
                 if (olderMessages != null && olderMessages.Any())
                 {
-                    _currentUserId = await _authService.GetUserIdAsync(); 
+                    _currentUserId = await _authService.GetUserIdAsync();
+
                     foreach (var msg in olderMessages.OrderByDescending(m => m.SentAt))
                     {
                         msg.IsOwnMessage = msg.SenderId == _currentUserId;
-                        Messages.Insert(0, msg); 
+                        Messages.Insert(0, msg);
                     }
                     _logger.LogInformation("Loaded {Count} older messages for chat {ActualChatId}", olderMessages.Count, ActualChatId);
                 }
@@ -176,10 +176,15 @@ namespace Solvix.Client.MVVM.ViewModels
 
         private async Task InitializeChatAsync()
         {
-            if (ActualChatId == Guid.Empty || IsLoadingMessages) return;
+            if (ActualChatId == Guid.Empty || IsLoadingMessages || _isInitialized) return;
 
             IsLoadingMessages = true;
-            Messages.Clear();
+
+            if (!_isInitialized)
+            {
+                Messages.Clear();
+            }
+
             _currentUserId = await _authService.GetUserIdAsync();
 
             if (_currentUserId == 0)
@@ -193,23 +198,29 @@ namespace Solvix.Client.MVVM.ViewModels
             try
             {
                 CurrentChat = await _chatService.GetChatByIdAsync(ActualChatId);
-                OnPropertyChanged(nameof(CurrentChat)); 
 
-                var initialMessages = await _chatService.GetChatMessagesAsync(ActualChatId, 0, 50);
-                if (initialMessages != null)
+                if (!_isInitialized || !Messages.Any())
                 {
-                    foreach (var msg in initialMessages.OrderBy(m => m.SentAt))
+                    var initialMessages = await _chatService.GetChatMessagesAsync(ActualChatId, 0, 50);
+                    if (initialMessages != null)
                     {
-                        msg.IsOwnMessage = msg.SenderId == _currentUserId;
-                        Messages.Add(msg);
+                        foreach (var msg in initialMessages.OrderBy(m => m.SentAt))
+                        {
+                            msg.IsOwnMessage = msg.SenderId == _currentUserId;
+                            if (!Messages.Any(m => m.Id == msg.Id && m.Id > 0))
+                            {
+                                Messages.Add(msg);
+                            }
+                        }
+                        _logger.LogInformation("Loaded {Count} initial messages for Chat {ActualChatId}", initialMessages.Count, ActualChatId);
                     }
-                    _logger.LogInformation("Loaded {Count} initial messages for Chat {ActualChatId}", Messages.Count, ActualChatId);
-                    ScrollToLastMessage();
+                    else
+                    {
+                        _logger.LogWarning("InitializeChatAsync: GetChatMessagesAsync returned null for ChatId {ActualChatId}", ActualChatId);
+                    }
                 }
-                else
-                {
-                    _logger.LogWarning("InitializeChatAsync: GetChatMessagesAsync returned null for ChatId {ActualChatId}", ActualChatId);
-                }
+
+                _isInitialized = true;
             }
             catch (Exception ex)
             {
@@ -247,7 +258,7 @@ namespace Solvix.Client.MVVM.ViewModels
                 if (serverMessage != null)
                 {
                     messageToUpdate.Id = serverMessage.Id;
-                    messageToUpdate.Status = Constants.MessageStatus.Sent; 
+                    messageToUpdate.Status = Constants.MessageStatus.Sent;
                     messageToUpdate.SentAt = serverMessage.SentAt;
                     messageToUpdate.CorrelationId = string.Empty;
                     _logger.LogInformation("Optimistic message updated with server info. ID: {Id}", serverMessage.Id);
@@ -258,13 +269,17 @@ namespace Solvix.Client.MVVM.ViewModels
                     _logger.LogWarning("SendMessageAsync returned null, marking optimistic message as Failed. CorrelationId: {CorrId}", optimisticMessage.CorrelationId);
                 }
             }
-            else { _logger.LogWarning("Could not find optimistic message to update. CorrelationId: {CorrId}", optimisticMessage.CorrelationId); }
+            else
+            {
+                _logger.LogWarning("Could not find optimistic message to update. CorrelationId: {CorrId}", optimisticMessage.CorrelationId);
+            }
         }
 
         private async void HandleMessageSendError(Exception ex, MessageModel optimisticMessage)
         {
             _logger.LogError(ex, "Error sending message to chat {ActualChatId}", ActualChatId);
             await _toastService.ShowToastAsync("خطا در ارسال پیام.", ToastType.Error);
+
             var messageToUpdate = Messages.FirstOrDefault(m => m.CorrelationId == optimisticMessage.CorrelationId);
             if (messageToUpdate != null)
             {
@@ -274,22 +289,14 @@ namespace Solvix.Client.MVVM.ViewModels
 
         private void HandleInvalidChatId()
         {
-            MainThread.BeginInvokeOnMainThread(async () => {
+            MainThread.BeginInvokeOnMainThread(async () =>
+            {
                 await _toastService.ShowToastAsync("خطا: شناسه چت نامعتبر است.", ToastType.Error);
                 if (Shell.Current.Navigation.NavigationStack.Count > 1)
                     await Shell.Current.Navigation.PopAsync();
                 else
                     await Shell.Current.GoToAsync("..");
             });
-        }
-
-        private void ScrollToLastMessage()
-        {
-            var lastMessage = Messages.LastOrDefault();
-            if (lastMessage != null && Messages.Count > 1)
-            {
-                _logger.LogDebug("Requesting scroll to last message.");
-            }
         }
         #endregion
 
@@ -300,9 +307,9 @@ namespace Solvix.Client.MVVM.ViewModels
             if (message.ChatId == this.ActualChatId && !Messages.Any(m => m.Id == message.Id && m.Id != 0))
             {
                 message.IsOwnMessage = message.SenderId == _currentUserId;
-                MainThread.BeginInvokeOnMainThread(() => {
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
                     Messages.Add(message);
-                    ScrollToLastMessage();
                 });
             }
         }
@@ -314,7 +321,8 @@ namespace Solvix.Client.MVVM.ViewModels
                 var message = Messages.FirstOrDefault(m => m.Id == messageId);
                 if (message != null && message.IsOwnMessage)
                 {
-                    MainThread.BeginInvokeOnMainThread(() => {
+                    MainThread.BeginInvokeOnMainThread(() =>
+                    {
                         message.Status = status;
                     });
                 }

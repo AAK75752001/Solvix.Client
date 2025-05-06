@@ -2,7 +2,6 @@
 using Solvix.Client.Core.Interfaces;
 using Solvix.Client.MVVM.Views;
 using Solvix.Client.Resources.Themes;
-using Microsoft.Maui.Controls;
 
 namespace Solvix.Client
 {
@@ -23,7 +22,7 @@ namespace Solvix.Client
             _authService = authService ?? throw new ArgumentNullException(nameof(authService));
             _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
 
-            ApplyTheme();
+            ApplySolvixTheme();
 
             SetInitialPage();
         }
@@ -71,24 +70,30 @@ namespace Solvix.Client
             }
         }
 
-        private void ApplyTheme()
+        private void ApplySolvixTheme()
         {
             try
             {
-                _logger.LogDebug("Applying application theme...");
+                _logger.LogDebug("Applying Solvix theme...");
                 var currentDictionaries = Application.Current?.Resources?.MergedDictionaries;
                 if (currentDictionaries == null) return;
+
                 var existingThemes = currentDictionaries.OfType<ResourceDictionary>()
-                                                     .Where(d => d is LightThemeResources || d is DarkThemeResources)
+                                                     .Where(d => d is LightThemeResources || d is DarkThemeResources || d is SolvixThemeResources)
                                                      .ToList();
                 foreach (var theme in existingThemes) { currentDictionaries.Remove(theme); }
-                currentDictionaries.Add(new LightThemeResources());
-                _logger.LogDebug("Applied LightThemeResources.");
-            }
-            catch (Exception ex) { _logger.LogError(ex, "Error applying theme in App constructor."); }
-        }
-        protected override void OnSleep() { _logger.LogInformation("App entering sleep state."); base.OnSleep(); }
-        protected override void OnResume() { _logger.LogInformation("App resuming from sleep state."); base.OnResume(); }
 
+                currentDictionaries.Add(new SolvixThemeResources());
+                _logger.LogDebug("Applied SolvixThemeResources successfully.");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error applying Solvix theme in App constructor.");
+            }
+        }
+
+        protected override void OnSleep() { _logger.LogInformation("App entering sleep state."); base.OnSleep(); }
+
+        protected override void OnResume() { _logger.LogInformation("App resuming from sleep state."); base.OnResume(); }
     }
 }
