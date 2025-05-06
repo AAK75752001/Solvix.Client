@@ -20,8 +20,8 @@ namespace Solvix.Client.WinUI
         /// </summary>
         /// 
 
-        const int WindowWidth = 800;
-        const int WindowHeight = 1200;
+        const int WindowWidth = 400;
+        const int WindowHeight = 800;
         public App()
         {
             this.InitializeComponent();
