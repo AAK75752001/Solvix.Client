@@ -1,13 +1,11 @@
 ﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Microsoft.Extensions.Logging;
 using Solvix.Client.Core.Interfaces;
 using Solvix.Client.Core.Models;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using System.Linq;
-using System.Collections.Generic;
-using System;
+using Microsoft.Extensions.Logging;
 using Solvix.Client.MVVM.Views;
 
 namespace Solvix.Client.MVVM.ViewModels
@@ -18,7 +16,9 @@ namespace Solvix.Client.MVVM.ViewModels
         private readonly IToastService _toastService;
         private readonly IAuthService _authService;
         private readonly ILogger<ChatListViewModel> _logger;
+
         private List<ChatModel> _allChats = new();
+
 
         [ObservableProperty]
         private ObservableCollection<ChatModel> _filteredChats = new();
@@ -35,18 +35,21 @@ namespace Solvix.Client.MVVM.ViewModels
         [ObservableProperty]
         private ChatModel? _selectedChat;
 
+
         public ChatListViewModel(
             IChatService chatService,
             IToastService toastService,
-            IAuthService authService,
-            ILogger<ChatListViewModel> logger)
+             IAuthService authService,
+             ILogger<ChatListViewModel> logger)
+
         {
             _chatService = chatService;
             _toastService = toastService;
             _authService = authService;
             _logger = logger;
 
-            PropertyChanged += (s, e) => {
+            PropertyChanged += (s, e) =>
+            {
                 if (e.PropertyName == nameof(SearchQuery))
                 {
                     FilterChats();
@@ -54,6 +57,7 @@ namespace Solvix.Client.MVVM.ViewModels
             };
         }
 
+        // دستور برای بارگذاری چت‌ها
         [RelayCommand]
         private async Task LoadChatsAsync(bool forceRefresh = false)
         {
@@ -77,6 +81,7 @@ namespace Solvix.Client.MVVM.ViewModels
 
                     FilterChats();
                     _logger.LogInformation("Chats loaded and filtered successfully. Count: {Count}", _allChats.Count);
+
                 }
                 else
                 {
@@ -96,15 +101,12 @@ namespace Solvix.Client.MVVM.ViewModels
             }
         }
 
+
         private void CalculateOtherParticipant(ChatModel chat, long currentUserId)
         {
             if (!chat.IsGroup && chat.Participants != null && chat.Participants.Any())
             {
                 chat.OtherParticipant = chat.Participants.FirstOrDefault(p => p.Id != currentUserId);
-            }
-            else
-            {
-                chat.OtherParticipant = null;
             }
         }
 
@@ -118,7 +120,9 @@ namespace Solvix.Client.MVVM.ViewModels
         private void FilterChats()
         {
             var query = SearchQuery?.Trim().ToLowerInvariant() ?? string.Empty;
+
             IEnumerable<ChatModel> chatsToShow;
+
             if (string.IsNullOrWhiteSpace(query))
             {
                 chatsToShow = _allChats;
@@ -128,29 +132,44 @@ namespace Solvix.Client.MVVM.ViewModels
                 chatsToShow = _allChats.Where(c =>
                     (c.DisplayTitle != null && c.DisplayTitle.ToLowerInvariant().Contains(query)) ||
                     (c.LastMessage != null && c.LastMessage.ToLowerInvariant().Contains(query)) ||
-                    (c.OtherParticipant?.PhoneNumber != null && c.OtherParticipant.PhoneNumber.Contains(query))
+                    (c.OtherParticipant?.PhoneNumber != null && c.OtherParticipant.PhoneNumber.Contains(query)) // جستجو در شماره تلفن مخاطب
                 );
             }
 
-            var sortedChatsToShow = chatsToShow.OrderByDescending(c => c.LastMessageTime ?? c.CreatedAt).ToList();
-            var currentFiltered = FilteredChats.ToList();
+            var chatsToRemove = FilteredChats.Except(chatsToShow).ToList();
+            foreach (var chat in chatsToRemove) { FilteredChats.Remove(chat); }
 
-            if (!currentFiltered.SequenceEqual(sortedChatsToShow))
+            var chatsToAdd = chatsToShow.Except(FilteredChats).ToList();
+            foreach (var chat in chatsToAdd.OrderByDescending(c => c.LastMessageTime ?? c.CreatedAt))
             {
-                FilteredChats.Clear();
-                foreach (var chat in sortedChatsToShow)
-                {
+                int index = chatsToShow.ToList().FindIndex(c => c.Id == chat.Id);
+                if (index >= 0 && index < FilteredChats.Count)
+                    FilteredChats.Insert(index, chat);
+                else
                     FilteredChats.Add(chat);
-                }
             }
+
+            var sorted = FilteredChats.OrderByDescending(c => c.LastMessageTime ?? c.CreatedAt).ToList();
+            if (!FilteredChats.SequenceEqual(sorted))
+            {
+                FilteredChats = new ObservableCollection<ChatModel>(sorted);
+                OnPropertyChanged(nameof(FilteredChats));
+            }
+
             _logger.LogDebug("Filtered chats count: {Count}", FilteredChats.Count);
         }
+
 
 
         [RelayCommand]
         private async Task GoToChatAsync(ChatModel? chat)
         {
-            if (chat == null) return;
+            if (chat == null)
+            {
+                _logger.LogWarning("GoToChatAsync called with null chat.");
+                return;
+            }
+
             try
             {
                 _logger.LogInformation("Navigating to ChatPage for ChatId: {ChatId}", chat.Id);
@@ -168,10 +187,11 @@ namespace Solvix.Client.MVVM.ViewModels
         }
 
         [RelayCommand]
-        private void SearchTriggered()
+        private async Task SearchTriggeredAsync()
         {
             _logger.LogInformation("Search triggered with query: {Query}", SearchQuery);
             FilterChats();
+            // await KeyboardExtensions.HideKeyboardAsync( CancellationToken.None);
         }
 
         [RelayCommand]
@@ -179,6 +199,7 @@ namespace Solvix.Client.MVVM.ViewModels
         {
             _logger.LogInformation("New Chat command executed.");
             await _toastService.ShowToastAsync("شروع چت جدید (به زودی!)", ToastType.Info);
+            // await _navigationService.NavigateToAsync(nameof(NewChatPage));
         }
 
         [RelayCommand]
@@ -186,6 +207,7 @@ namespace Solvix.Client.MVVM.ViewModels
         {
             _logger.LogInformation("Go To Settings command executed.");
             await _toastService.ShowToastAsync("رفتن به تنظیمات (به زودی!)", ToastType.Info);
+            // await _navigationService.NavigateToAsync(nameof(SettingsPage));
         }
 
         public async Task OnAppearingAsync()

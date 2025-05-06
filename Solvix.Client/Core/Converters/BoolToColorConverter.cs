@@ -1,29 +1,11 @@
 ﻿using System.Globalization;
-using Microsoft.Maui.Graphics;
 
 namespace Solvix.Client.Core.Converters
 {
-    public class BoolToColorConverter : BindableObject, IValueConverter // از BindableObject ارث‌بری کن
+    public class BoolToColorConverter : IValueConverter
     {
-        // BindableProperty برای TrueColor
-        public static readonly BindableProperty TrueColorProperty =
-            BindableProperty.Create(nameof(TrueColor), typeof(Color), typeof(BoolToColorConverter), Colors.Green); // مقدار پیش‌فرض
-
-        public Color TrueColor
-        {
-            get => (Color)GetValue(TrueColorProperty);
-            set => SetValue(TrueColorProperty, value);
-        }
-
-        // BindableProperty برای FalseColor
-        public static readonly BindableProperty FalseColorProperty =
-            BindableProperty.Create(nameof(FalseColor), typeof(Color), typeof(BoolToColorConverter), Colors.Gray); // مقدار پیش‌فرض
-
-        public Color FalseColor
-        {
-            get => (Color)GetValue(FalseColorProperty);
-            set => SetValue(FalseColorProperty, value);
-        }
+        public Color TrueColor { get; set; } = Colors.Green;
+        public Color FalseColor { get; set; } = Colors.Gray;
 
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
@@ -33,18 +15,17 @@ namespace Solvix.Client.Core.Converters
                 condition = boolValue;
             }
 
-            // حالا از مقادیر ست شده در BindableProperty استفاده کن
+            string colorKey = condition ? "OnlineStatusColor" : "OfflineStatusColor";
+            if (Application.Current?.Resources.TryGetValue(colorKey, out var resourceColor) == true && resourceColor is Color color)
+            {
+                return color;
+            }
+
             return condition ? TrueColor : FalseColor;
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            // تبدیل برعکس معمولا نیاز نیست
-            if (value is Color color)
-            {
-                // یک منطق ساده برای برعکس (ممکنه دقیق نباشه)
-                return color == TrueColor;
-            }
             return false;
         }
     }

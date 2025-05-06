@@ -7,90 +7,56 @@
              xmlns:converters="clr-namespace:Solvix.Client.Core.Converters"
              x:Class="Solvix.Client.MVVM.Views.ChatListPage"
              x:DataType="vm:ChatListViewModel"
-             BackgroundColor="{DynamicResource PageBackgroundColor}"
-             Title="پیام‌های سالویکس">
+             Title="پیام‌ها">
 
     <ContentPage.Resources>
         <ResourceDictionary>
             <converters:DateTimeToFormattedStringConverter x:Key="DateTimeFormatter" />
             <toolkit:IntToBoolConverter x:Key="IntToBoolConverter"/>
-            <converters:BoolToColorConverter x:Key="OnlineStatusColorConverter" TrueColor="{StaticResource OnlineStatusColor}" FalseColor="{StaticResource OfflineStatusColor}" />
+            <converters:BoolToColorConverter x:Key="OnlineStatusColorConverter" />
             <toolkit:InvertedBoolConverter x:Key="InverseBoolConverter" />
+            <converters:IsOwnMessageToAlignmentConverter x:Key="MessageAlignmentConverter"/>
+            <converters:MessageStatusToIconConverter x:Key="StatusIconConverter"/>
+            <converters:MessageStatusToOpacityConverter x:Key="StatusOpacityConverter"/>
 
-            <!-- استایل آیتم چت -->
             <Style x:Key="ChatItemBorderStyle" TargetType="Border">
-                <Setter Property="Padding" Value="14, 14"/>
-                <Setter Property="StrokeShape">
-                    <RoundRectangle CornerRadius="16"/>
-                </Setter>
+                <Setter Property="Padding" Value="10, 12"/>
+                <Setter Property="StrokeShape" Value="Rectangle"/>
                 <Setter Property="StrokeThickness" Value="0"/>
-                <Setter Property="BackgroundColor" Value="{DynamicResource CardBackgroundColor}"/>
-                <Setter Property="Margin" Value="12,6"/>
-                <Setter Property="Shadow">
-                    <Shadow Brush="{DynamicResource ShadowColor}" Offset="0,2" Radius="6" Opacity="0.08"/>
-                </Setter>
-                <Setter Property="VisualStateManager.VisualStateGroups">
-                    <VisualStateGroupList>
-                        <VisualStateGroup x:Name="CommonStates">
-                            <VisualState x:Name="Normal" />
-                            <VisualState x:Name="PointerOver">
-                                <VisualState.Setters>
-                                    <Setter Property="BackgroundColor" Value="{DynamicResource InputFieldFocusBorderColor}" />
-                                    <Setter Property="Shadow">
-                                        <Shadow Brush="{DynamicResource ShadowColor}" Offset="0,3" Radius="8" Opacity="0.12"/>
-                                    </Setter>
-                                </VisualState.Setters>
-                            </VisualState>
-                            <VisualState x:Name="Pressed">
-                                <VisualState.Setters>
-                                    <Setter Property="BackgroundColor" Value="{DynamicResource InputFieldFocusBorderColor}" />
-                                    <Setter Property="Scale" Value="0.98" />
-                                </VisualState.Setters>
-                            </VisualState>
-                        </VisualStateGroup>
-                    </VisualStateGroupList>
-                </Setter>
+                <Setter Property="BackgroundColor" Value="Transparent"/>
+                <Setter Property="Margin" Value="5,0"/>
             </Style>
-
-            <!-- استایل دایره نمایش حرف اول نام -->
             <Style x:Key="InitialsCircleStyle" TargetType="Border">
-                <Setter Property="HeightRequest" Value="58"/>
-                <Setter Property="WidthRequest" Value="58"/>
+                <Setter Property="HeightRequest" Value="55"/>
+                <Setter Property="WidthRequest" Value="55"/>
                 <Setter Property="StrokeShape">
-                    <RoundRectangle CornerRadius="29"/>
+                    <RoundRectangle CornerRadius="27.5"/>
                 </Setter>
-                <Setter Property="BackgroundColor" Value="{DynamicResource PrimaryColor}"/>
+                <Setter Property="BackgroundColor" Value="{DynamicResource TertiaryColor}"/>
                 <Setter Property="VerticalOptions" Value="Center"/>
                 <Setter Property="HorizontalOptions" Value="Center"/>
             </Style>
-
-            <!-- استایل متن حرف اول نام -->
             <Style x:Key="InitialsLabelStyle" TargetType="Label">
-                <Setter Property="FontSize" Value="22"/>
+                <Setter Property="FontSize" Value="20"/>
                 <Setter Property="FontAttributes" Value="Bold"/>
                 <Setter Property="TextColor" Value="{DynamicResource InverseTextColor}"/>
                 <Setter Property="HorizontalOptions" Value="Center"/>
                 <Setter Property="VerticalOptions" Value="Center"/>
                 <Setter Property="HorizontalTextAlignment" Value="Center"/>
                 <Setter Property="VerticalTextAlignment" Value="Center"/>
-                <Setter Property="FontFamily" Value="Vazirmatn"/>
             </Style>
-
-            <!-- استایل نشانگر وضعیت آنلاین -->
             <Style x:Key="OnlineStatusIndicatorStyle" TargetType="Border">
-                <Setter Property="WidthRequest" Value="16"/>
-                <Setter Property="HeightRequest" Value="16"/>
+                <Setter Property="WidthRequest" Value="14"/>
+                <Setter Property="HeightRequest" Value="14"/>
                 <Setter Property="StrokeShape">
-                    <RoundRectangle CornerRadius="8"/>
+                    <RoundRectangle CornerRadius="7"/>
                 </Setter>
                 <Setter Property="HorizontalOptions" Value="End"/>
                 <Setter Property="VerticalOptions" Value="End"/>
-                <Setter Property="Margin" Value="0,0,0,2"/>
+                <Setter Property="Margin" Value="0,0,1,1"/>
                 <Setter Property="Stroke" Value="{DynamicResource PageBackgroundColor}"/>
                 <Setter Property="StrokeThickness" Value="2.5"/>
             </Style>
-
-            <!-- استایل عنوان چت -->
             <Style x:Key="ChatTitleStyle" TargetType="Label">
                 <Setter Property="FontSize" Value="16"/>
                 <Setter Property="FontAttributes" Value="Bold"/>
@@ -99,10 +65,7 @@
                 <Setter Property="VerticalOptions" Value="Center"/>
                 <Setter Property="HorizontalOptions" Value="Start"/>
                 <Setter Property="HorizontalTextAlignment" Value="Start"/>
-                <Setter Property="FontFamily" Value="Vazirmatn"/>
             </Style>
-
-            <!-- استایل آخرین پیام -->
             <Style x:Key="LastMessageStyle" TargetType="Label">
                 <Setter Property="FontSize" Value="14"/>
                 <Setter Property="TextColor" Value="{DynamicResource SecondaryTextColor}"/>
@@ -110,144 +73,83 @@
                 <Setter Property="VerticalOptions" Value="Center"/>
                 <Setter Property="HorizontalOptions" Value="Start"/>
                 <Setter Property="HorizontalTextAlignment" Value="Start"/>
-                <Setter Property="MaxLines" Value="1"/>
-                <Setter Property="FontFamily" Value="Vazirmatn"/>
             </Style>
-
-            <!-- استایل زمان آخرین پیام -->
             <Style x:Key="TimestampStyle" TargetType="Label">
                 <Setter Property="FontSize" Value="12"/>
                 <Setter Property="TextColor" Value="{DynamicResource TertiaryTextColor}"/>
                 <Setter Property="HorizontalOptions" Value="End"/>
                 <Setter Property="VerticalOptions" Value="Start"/>
-                <Setter Property="FontFamily" Value="Vazirmatn"/>
             </Style>
-
-            <!-- استایل نشانگر پیام‌های خوانده نشده -->
             <Style x:Key="UnreadBadgeStyle" TargetType="Border">
                 <Setter Property="BackgroundColor" Value="{DynamicResource PrimaryColor}"/>
                 <Setter Property="StrokeShape">
-                    <RoundRectangle CornerRadius="12"/>
+                    <RoundRectangle CornerRadius="10"/>
                 </Setter>
-                <Setter Property="Padding" Value="8,2"/>
+                <Setter Property="Padding" Value="6,2"/>
                 <Setter Property="HorizontalOptions" Value="End"/>
                 <Setter Property="VerticalOptions" Value="End"/>
-                <Setter Property="MinimumWidthRequest" Value="24"/>
-                <Setter Property="MinimumHeightRequest" Value="24"/>
-                <Setter Property="Margin" Value="0,6,0,0"/>
+                <Setter Property="MinimumWidthRequest" Value="20"/>
+                <Setter Property="MinimumHeightRequest" Value="20"/>
+                <Setter Property="Margin" Value="0,3,0,0"/>
             </Style>
-
-            <!-- استایل عدد پیام‌های خوانده نشده -->
             <Style x:Key="UnreadCountLabelStyle" TargetType="Label">
                 <Setter Property="TextColor" Value="{DynamicResource InverseTextColor}"/>
-                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="FontSize" Value="11"/>
                 <Setter Property="HorizontalTextAlignment" Value="Center"/>
                 <Setter Property="VerticalTextAlignment" Value="Center"/>
                 <Setter Property="FontAttributes" Value="Bold"/>
-                <Setter Property="FontFamily" Value="Vazirmatn"/>
             </Style>
-
-            <!-- استایل جستجو -->
-            <Style x:Key="SearchBarStyle" TargetType="SearchBar">
-                <Setter Property="BackgroundColor" Value="{DynamicResource CardBackgroundColor}"/>
-                <Setter Property="TextColor" Value="{DynamicResource PrimaryTextColor}"/>
-                <Setter Property="PlaceholderColor" Value="{DynamicResource TertiaryTextColor}"/>
-                <Setter Property="CancelButtonColor" Value="{DynamicResource PrimaryColor}"/>
-                <Setter Property="FontFamily" Value="Vazirmatn"/>
+            <Style x:Key="MessageBubbleFrameStyle" TargetType="Frame">
+                <Setter Property="Padding" Value="10,8"/>
+                <Setter Property="Margin" Value="5,3"/>
+                <Setter Property="CornerRadius" Value="15"/>
+                <Setter Property="HasShadow" Value="False"/>
+                <Setter Property="MaximumWidthRequest" Value="{OnPlatform WinUI=400, Android=300, iOS=300}"/>
+            </Style>
+            <Style x:Key="MessageTextStyle" TargetType="Label">
                 <Setter Property="FontSize" Value="15"/>
-                <Setter Property="Margin" Value="12,8"/>
-                <Setter Property="Placeholder" Value="جستجو در پیام‌ها..."/>
             </Style>
-
-            <!-- استایل دکمه شناور چت جدید -->
-            <Style x:Key="NewChatButtonStyle" TargetType="ImageButton">
-                <Setter Property="BackgroundColor" Value="{DynamicResource PrimaryColor}"/>
-                <Setter Property="CornerRadius" Value="30"/>
-                <Setter Property="HeightRequest" Value="60"/>
-                <Setter Property="WidthRequest" Value="60"/>
-                <Setter Property="Padding" Value="14"/>
+            <Style x:Key="MessageTimeStyle" TargetType="Label">
+                <Setter Property="FontSize" Value="11"/>
+                <Setter Property="TextColor" Value="{DynamicResource TertiaryTextColor}"/>
                 <Setter Property="HorizontalOptions" Value="End"/>
                 <Setter Property="VerticalOptions" Value="End"/>
-                <Setter Property="Margin" Value="0,0,16,16"/>
-                <Setter Property="Shadow">
-                    <Shadow Brush="{DynamicResource ShadowColor}" Offset="0,4" Radius="10" Opacity="0.2"/>
-                </Setter>
-                <Setter Property="VisualStateManager.VisualStateGroups">
-                    <VisualStateGroupList>
-                        <VisualStateGroup x:Name="CommonStates">
-                            <VisualState x:Name="Normal" />
-                            <VisualState x:Name="Pressed">
-                                <VisualState.Setters>
-                                    <Setter Property="BackgroundColor" Value="{DynamicResource ButtonHighlightColor}" />
-                                    <Setter Property="Scale" Value="0.95" />
-                                </VisualState.Setters>
-                            </VisualState>
-                        </VisualStateGroup>
-                    </VisualStateGroupList>
-                </Setter>
+                <Setter Property="Margin" Value="5,0,0,0"/>
             </Style>
-
-            <!-- استایل متن خالی -->
-            <Style x:Key="EmptyViewTextStyle" TargetType="Label">
-                <Setter Property="TextColor" Value="{DynamicResource TertiaryTextColor}"/>
+            <Style x:Key="MessageStatusIconStyle" TargetType="Label">
+                <Setter Property="FontFamily" Value="MaterialIcons"/>
                 <Setter Property="FontSize" Value="16"/>
-                <Setter Property="HorizontalTextAlignment" Value="Center"/>
-                <Setter Property="HorizontalOptions" Value="Center"/>
-                <Setter Property="Margin" Value="20"/>
-                <Setter Property="FontFamily" Value="Vazirmatn"/>
+                <Setter Property="Margin" Value="3,0,0,0"/>
+                <Setter Property="VerticalOptions" Value="End"/>
             </Style>
 
-            <Style x:Key="EmptyViewButtonStyle" TargetType="Button">
-                <Setter Property="BackgroundColor" Value="{DynamicResource PrimaryColor}"/>
-                <Setter Property="TextColor" Value="{DynamicResource InverseTextColor}"/>
-                <Setter Property="FontSize" Value="14"/>
-                <Setter Property="CornerRadius" Value="20"/>
-                <Setter Property="Padding" Value="16,10"/>
-                <Setter Property="HorizontalOptions" Value="Center"/>
-                <Setter Property="Margin" Value="0,16,0,0"/>
-                <Setter Property="FontFamily" Value="Vazirmatn"/>
-            </Style>
         </ResourceDictionary>
     </ContentPage.Resources>
 
     <ContentPage.ToolbarItems>
-        <ToolbarItem IconImageSource="{FontImageSource FontFamily=MaterialIcons, Glyph=search, Color={DynamicResource PrimaryTextColor}}"
-                     Command="{Binding SearchCommand}"
+        <ToolbarItem Text="جستجو"
+                     IconImageSource="{FontImageSource FontFamily=MaterialIcons, Glyph=search, Color={DynamicResource PrimaryTextColor}}"
+                     Command="{Binding SearchChatsCommand}"
                      Order="Primary" Priority="0"/>
-        <ToolbarItem IconImageSource="{FontImageSource FontFamily=MaterialIcons, Glyph=settings, Color={DynamicResource PrimaryTextColor}}"
+        <ToolbarItem Text="منو"
+                     IconImageSource="{FontImageSource FontFamily=MaterialIcons, Glyph=menu, Color={DynamicResource PrimaryTextColor}}"
                      Command="{Binding GoToSettingsCommand}"
                      Order="Primary" Priority="1"/>
     </ContentPage.ToolbarItems>
 
     <Grid RowDefinitions="Auto, *" BackgroundColor="{DynamicResource PageBackgroundColor}">
 
-        <!-- جستجو -->
-        <SearchBar Grid.Row="0" 
-                   Style="{StaticResource SearchBarStyle}"
+        <SearchBar Grid.Row="0" Placeholder="جستجو..."
                    Text="{Binding SearchQuery, Mode=TwoWay}"
-                   SearchCommand="{Binding SearchTriggeredCommand}"/>
+                   SearchCommand="{Binding SearchTriggeredCommand}"
+                   Margin="10,5"/>
 
-        <!-- لیست چت‌ها -->
         <RefreshView Grid.Row="1"
                      Command="{Binding RefreshCommand}"
-                     IsRefreshing="{Binding IsRefreshing}"
-                     RefreshColor="{DynamicResource PrimaryColor}">
+                     IsRefreshing="{Binding IsRefreshing}">
             <CollectionView ItemsSource="{Binding FilteredChats}"
-                            SelectionMode="None">
-                <CollectionView.EmptyView>
-                    <StackLayout VerticalOptions="Center" HorizontalOptions="Center" Margin="20">
-                        <Image Source="empty_chat.png" HeightRequest="120" IsVisible="False"/>
-                        <Label Text="هنوز گفتگویی ندارید!" 
-                               Style="{StaticResource EmptyViewTextStyle}" 
-                               FontAttributes="Bold" 
-                               FontSize="18"/>
-                        <Label Text="با دوستان خود گفتگو را شروع کنید." 
-                               Style="{StaticResource EmptyViewTextStyle}"/>
-                        <Button Text="شروع گفتگوی جدید" 
-                                Command="{Binding NewChatCommand}" 
-                                Style="{StaticResource EmptyViewButtonStyle}"/>
-                    </StackLayout>
-                </CollectionView.EmptyView>
+                            SelectionMode="None"
+                            EmptyView="هنوز چتی وجود ندارد!">
                 <CollectionView.ItemTemplate>
                     <DataTemplate x:DataType="model:ChatModel">
                         <Border Style="{StaticResource ChatItemBorderStyle}">
@@ -255,26 +157,22 @@
                                 <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatListViewModel}}, Path=GoToChatCommand}"
                                                        CommandParameter="{Binding .}"/>
                             </Border.GestureRecognizers>
-                            <Grid ColumnDefinitions="Auto, *, Auto" RowDefinitions="Auto, Auto" ColumnSpacing="14" RowSpacing="4">
+                            <Grid ColumnDefinitions="Auto, *, Auto" RowDefinitions="Auto, Auto" ColumnSpacing="12" RowSpacing="2">
 
-                                <!-- آواتار و نشانگر وضعیت -->
                                 <Grid Grid.Row="0" Grid.Column="0" Grid.RowSpan="2" VerticalOptions="Center">
                                     <Border Style="{StaticResource InitialsCircleStyle}">
                                         <Label Text="{Binding OtherParticipant.Initials}" Style="{StaticResource InitialsLabelStyle}"/>
                                     </Border>
                                     <Border Style="{StaticResource OnlineStatusIndicatorStyle}"
-                                           BackgroundColor="{Binding OtherParticipant.IsOnline, Converter={StaticResource OnlineStatusColorConverter}}"
-                                           IsVisible="{Binding IsGroup, Converter={toolkit:InvertedBoolConverter}}"/>
+                                               BackgroundColor="{Binding OtherParticipant.IsOnline, Converter={StaticResource OnlineStatusColorConverter}}"
+                                               IsVisible="{Binding IsGroup, Converter={toolkit:InvertedBoolConverter}}"/>
                                 </Grid>
 
-                                <!-- عنوان و آخرین پیام -->
                                 <Label Grid.Row="0" Grid.Column="1" Text="{Binding DisplayTitle}" Style="{StaticResource ChatTitleStyle}" />
                                 <Label Grid.Row="1" Grid.Column="1" Text="{Binding LastMessage}" Style="{StaticResource LastMessageStyle}"/>
-
-                                <!-- زمان و تعداد پیام خوانده نشده -->
                                 <Label Grid.Row="0" Grid.Column="2" Text="{Binding LastMessageTime, Converter={StaticResource DateTimeFormatter}}" Style="{StaticResource TimestampStyle}" />
                                 <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource UnreadBadgeStyle}"
-                                      IsVisible="{Binding UnreadCount, Converter={StaticResource IntToBoolConverter}}">
+                                          IsVisible="{Binding UnreadCount, Converter={StaticResource IntToBoolConverter}}">
                                     <Label Text="{Binding UnreadCount}" Style="{StaticResource UnreadCountLabelStyle}"/>
                                 </Border>
 
@@ -285,18 +183,20 @@
             </CollectionView>
         </RefreshView>
 
-        <!-- دکمه چت جدید -->
         <ImageButton Grid.Row="1"
-                     Source="{FontImageSource FontFamily=MaterialIcons, Glyph=chat, Color={DynamicResource InverseTextColor}}"
-                     Style="{StaticResource NewChatButtonStyle}"
-                     Command="{Binding NewChatCommand}"/>
+                     Source="{FontImageSource FontFamily=MaterialIcons, Glyph=add_comment, Color={DynamicResource InverseTextColor}}"
+                     BackgroundColor="{DynamicResource PrimaryColor}"
+                     CornerRadius="28" HeightRequest="56" WidthRequest="56" Padding="12"
+                     HorizontalOptions="End" VerticalOptions="End" Margin="16"
+                     Command="{Binding NewChatCommand}">
+            <ImageButton.Shadow>
+                <Shadow Brush="Black" Offset="4,4" Radius="8" Opacity="0.3"/>
+            </ImageButton.Shadow>
+        </ImageButton>
 
-        <!-- نشانگر لودینگ -->
         <ActivityIndicator Grid.Row="0" Grid.RowSpan="2"
-                           IsRunning="{Binding IsLoading}" 
-                           IsVisible="{Binding IsLoading}"
-                           HorizontalOptions="Center" 
-                           VerticalOptions="Center"
+                           IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}"
+                           HorizontalOptions="Center" VerticalOptions="Center"
                            Color="{DynamicResource PrimaryColor}"/>
     </Grid>
 </ContentPage>

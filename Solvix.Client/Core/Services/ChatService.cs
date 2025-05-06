@@ -3,9 +3,6 @@ using Solvix.Client.Core.Models;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Solvix.Client.Core;
-using System;
-using System.Linq;
 
 namespace Solvix.Client.Core.Services
 {
@@ -14,18 +11,12 @@ namespace Solvix.Client.Core.Services
         private readonly IApiService _apiService;
         private readonly ILogger<ChatService> _logger;
         private readonly IToastService _toastService;
-        private readonly IAuthService _authService;
 
-        public ChatService(
-            IApiService apiService,
-            ILogger<ChatService> logger,
-            IToastService toastService,
-            IAuthService authService)
+        public ChatService(IApiService apiService, ILogger<ChatService> logger, IToastService toastService)
         {
             _apiService = apiService;
             _logger = logger;
             _toastService = toastService;
-            _authService = authService;
         }
 
         public async Task<List<ChatModel>?> GetUserChatsAsync()
@@ -51,30 +42,13 @@ namespace Solvix.Client.Core.Services
             {
                 string endpoint = $"{Constants.Endpoints.GetMessages}/{chatId}/messages";
                 var queryParams = new Dictionary<string, string>
-                     {
-                         { "skip", skip.ToString() },
-                         { "take", take.ToString() }
-                     };
+                 {
+                     { "skip", skip.ToString() },
+                     { "take", take.ToString() }
+                 };
                 _logger.LogInformation("Fetching messages for chat {ChatId} (Skip: {Skip}, Take: {Take})...", chatId, skip, take);
                 var messages = await _apiService.GetAsync<List<MessageModel>>(endpoint, queryParams);
-
-                if (messages != null)
-                {
-                    long currentUserId = await _authService.GetUserIdAsync();
-                    foreach (var msg in messages)
-                    {
-                        msg.IsOwnMessage = msg.SenderId == currentUserId;
-                        if (msg.IsOwnMessage)
-                        {
-                            msg.Status = msg.IsRead ? Constants.MessageStatus.Read : Constants.MessageStatus.Sent;
-                        }
-                        else
-                        {
-                            msg.Status = 0;
-                        }
-                    }
-                }
-                _logger.LogInformation("Fetched and processed {Count} messages for chat {ChatId}.", messages?.Count ?? 0, chatId);
+                _logger.LogInformation("Fetched {Count} messages for chat {ChatId}.", messages?.Count ?? 0, chatId);
                 return messages;
             }
             catch (Exception ex)
@@ -103,12 +77,14 @@ namespace Solvix.Client.Core.Services
             }
         }
 
+
         public async Task<(Guid? chatId, bool alreadyExists)> StartChatWithUserAsync(long recipientUserId)
         {
             try
             {
                 _logger.LogInformation("Starting chat with user {RecipientUserId}...", recipientUserId);
-                var result = await _apiService.PostAsync<dynamic>(Constants.Endpoints.StartChat, new { recipientUserId });
+                var result = await _apiService.PostAsync<dynamic>(Constants.Endpoints.StartChat, new { recipientUserId }); // ارسال به صورت anonymous object
+
                 if (result != null && result.chatId != null)
                 {
                     try
@@ -140,6 +116,7 @@ namespace Solvix.Client.Core.Services
             }
         }
 
+
         public async Task<MessageModel?> SendMessageAsync(Guid chatId, string content)
         {
             try
@@ -147,8 +124,7 @@ namespace Solvix.Client.Core.Services
                 var dto = new { ChatId = chatId, Content = content };
                 _logger.LogInformation("Sending message to chat {ChatId}...", chatId);
                 var message = await _apiService.PostAsync<MessageModel>(Constants.Endpoints.SendMessage, dto);
-                _logger.LogInformation("Message sent response received for chat {ChatId}.", message?.ChatId ?? chatId);
-                // برگرداندن DTO دریافتی از سرور (شامل ID و زمان دقیق سرور)
+                _logger.LogInformation("Message sent response received for chat {ChatId}.", chatId);
                 return message;
             }
             catch (Exception ex)
