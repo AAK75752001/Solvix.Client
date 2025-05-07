@@ -1,12 +1,10 @@
-﻿// Solvix.Client/MVVM/ViewModels/ChatPageViewModel.cs
-using CommunityToolkit.Mvvm.ComponentModel;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Solvix.Client.Core;
 using Solvix.Client.Core.Interfaces;
 using Solvix.Client.Core.Models;
 using System.Collections.ObjectModel;
-using System.Linq; // Ensure Linq is used
 
 namespace Solvix.Client.MVVM.ViewModels
 {
@@ -58,10 +56,10 @@ namespace Solvix.Client.MVVM.ViewModels
         private bool _isConnected;
 
         [ObservableProperty]
-        private bool _isTyping; // وضعیت تایپ کردن کاربر مقابل
+        private bool _isTyping;
 
         [ObservableProperty]
-        private string _typingIndicatorText = string.Empty; // متن نمایش وضعیت تایپ
+        private string _typingIndicatorText = string.Empty;
 
         [ObservableProperty]
         private bool canLoadMore = true;
@@ -86,7 +84,6 @@ namespace Solvix.Client.MVVM.ViewModels
                         _logger.LogInformation("ChatId changed or not initialized. New ChatId: {ParsedGuid}. Previous: {ActualChatId}", parsedGuid, ActualChatId);
                         ActualChatId = parsedGuid;
                         ResetViewModelState();
-                        // Start initialization asynchronously without awaiting here
                         _initializationTask = InitializeChatAsync();
                     }
                 }
@@ -118,13 +115,26 @@ namespace Solvix.Client.MVVM.ViewModels
             _signalRService.OnMessageStatusUpdated += SignalRMessageStatusUpdated;
             _signalRService.OnConnectionStateChanged += SignalRConnectionStateChanged;
             _signalRService.OnUserTyping += SignalRUserTyping;
-            _signalRService.OnMessageCorrelationConfirmation += SignalRMessageCorrelationConfirmation; // Handle confirmation
+            _signalRService.OnMessageCorrelationConfirmation += SignalRMessageCorrelationConfirmation;
 
             IsConnected = _signalRService.IsConnected;
         }
         #endregion
 
         #region Commands
+
+        [RelayCommand]
+        private async Task GoBackAsync()
+        {
+            try
+            {
+                await Shell.Current.GoToAsync("..");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error navigating back");
+            }
+        }
 
         [RelayCommand(CanExecute = nameof(CanSendMessage))]
         private async Task SendMessageAsync()
@@ -142,14 +152,13 @@ namespace Solvix.Client.MVVM.ViewModels
 
             try
             {
-                // Add optimistic message to UI immediately
+                // Add optimistic message to UI immediately without clearing the collection
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     Messages.Add(optimisticMessage);
-                    ScrollToBottom(); // Scroll down after adding
+                    ScrollToBottom();
                 });
                 _logger.LogDebug("Added optimistic message with CorrelationId {CorrId} to UI.", optimisticMessage.CorrelationId);
-
 
                 bool sentViaSignalR = false;
                 if (_signalRService.IsConnected)
@@ -170,7 +179,6 @@ namespace Solvix.Client.MVVM.ViewModels
                 {
                     _logger.LogWarning("SignalR not connected. Will attempt send via API.");
                 }
-
 
                 if (!sentViaSignalR)
                 {
@@ -264,7 +272,6 @@ namespace Solvix.Client.MVVM.ViewModels
             }
         }
 
-
         [RelayCommand]
         private async Task AttachFileAsync() => await _toastService.ShowToastAsync("ارسال فایل (به زودی!)", ToastType.Info);
 
@@ -328,7 +335,6 @@ namespace Solvix.Client.MVVM.ViewModels
             }
         }
 
-
         #endregion
 
         #region SignalR Event Handlers
@@ -348,7 +354,6 @@ namespace Solvix.Client.MVVM.ViewModels
                 var existingMessage = Messages.FirstOrDefault(m =>
                                         (m.Id > 0 && m.Id == message.Id) ||
                                         (!string.IsNullOrEmpty(m.CorrelationId) && m.CorrelationId == message.CorrelationId));
-
 
                 if (existingMessage == null)
                 {
@@ -380,7 +385,6 @@ namespace Solvix.Client.MVVM.ViewModels
                     }
                     existingMessage.IsRead = message.IsRead;
                     existingMessage.ReadAt = message.ReadAt;
-
                 }
             });
         }
@@ -409,7 +413,6 @@ namespace Solvix.Client.MVVM.ViewModels
                 }
             });
         }
-
 
         private void SignalRMessageStatusUpdated(Guid chatId, int messageId, int status)
         {
@@ -452,7 +455,6 @@ namespace Solvix.Client.MVVM.ViewModels
             });
         }
 
-
         private void SignalRConnectionStateChanged(bool isConnected)
         {
             if (_isDisposed) return;
@@ -485,7 +487,6 @@ namespace Solvix.Client.MVVM.ViewModels
             _logger.LogInformation("ViewModel state reset for new ChatId {ActualChatId}", ActualChatId);
         }
 
-
         private async Task InitializeChatAsync()
         {
             await _initializeSemaphore.WaitAsync();
@@ -517,8 +518,9 @@ namespace Solvix.Client.MVVM.ViewModels
                     foreach (var msg in initialMessages.OrderBy(m => m.SentAt))
                     {
                         msg.IsOwnMessage = msg.SenderId == _currentUserId;
-                        SetMessageStatusFromData(msg); // Set status correctly
-                        if (!Messages.Any(m => m.Id == msg.Id && m.Id > 0)) Messages.Add(msg);
+                        SetMessageStatusFromData(msg); // Set status correctly based on loaded data
+
+                        Messages.Add(msg);
                     }
                     _logger.LogInformation("Loaded {Count} initial messages for Chat {ActualChatId}", initialMessages.Count, ActualChatId);
                     CanLoadMore = initialMessages.Count >= 30;
@@ -545,21 +547,20 @@ namespace Solvix.Client.MVVM.ViewModels
             }
         }
 
-
         private bool CanSendMessage() => !string.IsNullOrWhiteSpace(NewMessageText) && !IsSendingMessage && _isInitialized && IsConnected;
 
         private MessageModel CreateOptimisticMessage(string content)
         {
             return new MessageModel
             {
-                Id = 0,
+                Id = 0, // Will be assigned a real ID by the server
                 ChatId = ActualChatId,
                 Content = content,
                 SenderId = _currentUserId,
-                SenderName = "شما", // Or get current user's name
+                SenderName = "Me", // Will be replaced with actual user name
                 SentAt = DateTime.UtcNow,
                 IsOwnMessage = true,
-                Status = Constants.MessageStatus.Sending,
+                Status = Constants.MessageStatus.Sending, // Start with sending status
                 CorrelationId = Guid.NewGuid().ToString("N") // Use N format for shorter ID
             };
         }
@@ -567,31 +568,28 @@ namespace Solvix.Client.MVVM.ViewModels
         // Update based on API response (if SignalR fails or is not used)
         private void UpdateSentMessageStatusFromApi(MessageModel optimisticMessage, MessageModel? serverMessage)
         {
-            MainThread.BeginInvokeOnMainThread(() =>
+            var messageToUpdate = Messages.FirstOrDefault(m => m.CorrelationId == optimisticMessage.CorrelationId);
+            if (messageToUpdate != null)
             {
-                var messageToUpdate = Messages.FirstOrDefault(m => m.CorrelationId == optimisticMessage.CorrelationId);
-                if (messageToUpdate != null)
+                if (serverMessage != null && serverMessage.Id > 0)
                 {
-                    if (serverMessage != null && serverMessage.Id > 0)
-                    {
-                        messageToUpdate.Id = serverMessage.Id;
-                        messageToUpdate.SentAt = serverMessage.SentAt;
-                        SetMessageStatusFromData(serverMessage); // Determine status based on server data
-                        messageToUpdate.Status = serverMessage.Status;
-                        messageToUpdate.IsRead = serverMessage.IsRead;
-                        messageToUpdate.ReadAt = serverMessage.ReadAt;
-                        _logger.LogInformation("Optimistic message (CorrId {CorrId}) updated via API. New ID: {Id}, Status: {Status}", optimisticMessage.CorrelationId, serverMessage.Id, serverMessage.Status);
-                    }
-                    else
-                    {
-                        messageToUpdate.Status = Constants.MessageStatus.Failed;
-                        _logger.LogWarning("SendMessageAsync via API failed or returned invalid data for CorrelationId {CorrId}, marking optimistic message as Failed.", optimisticMessage.CorrelationId);
-                    }
-                    OnPropertyChanged(nameof(Messages)); // Trigger UI update if needed
+                    messageToUpdate.Id = serverMessage.Id;
+                    messageToUpdate.SentAt = serverMessage.SentAt;
+                    SetMessageStatusFromData(serverMessage); // Determine status based on server data
+                    messageToUpdate.Status = serverMessage.Status; // Update with server status
+                    messageToUpdate.IsRead = serverMessage.IsRead;
+                    messageToUpdate.ReadAt = serverMessage.ReadAt;
+                    _logger.LogInformation("Optimistic message (CorrId {CorrId}) updated via API. New ID: {Id}, Status: {Status}",
+                        optimisticMessage.CorrelationId, serverMessage.Id, serverMessage.Status);
                 }
-            });
+                else
+                {
+                    messageToUpdate.Status = Constants.MessageStatus.Failed;
+                    _logger.LogWarning("SendMessageAsync via API failed or returned invalid data for CorrelationId {CorrId}, marking optimistic message as Failed.",
+                        optimisticMessage.CorrelationId);
+                }
+            }
         }
-
 
         private async void HandleMessageSendError(Exception ex, MessageModel optimisticMessage)
         {
@@ -613,7 +611,8 @@ namespace Solvix.Client.MVVM.ViewModels
             await MainThread.InvokeOnMainThreadAsync(async () =>
             {
                 await _toastService.ShowToastAsync("خطا: شناسه چت نامعتبر است.", ToastType.Error);
-                try { await Shell.Current.GoToAsync(".."); } catch (Exception navEx) { _logger.LogError(navEx, "Navigation failed after invalid ChatId"); }
+                try { await Shell.Current.GoToAsync(".."); }
+                catch (Exception navEx) { _logger.LogError(navEx, "Navigation failed after invalid ChatId"); }
             });
         }
 
@@ -644,11 +643,11 @@ namespace Solvix.Client.MVVM.ViewModels
                 }
                 else
                 {
-                    // Fallback to API (less ideal for real-time)
+                    // Fallback to API
                     await _chatService.MarkMessagesAsReadAsync(ActualChatId, new List<int> { messageId });
                 }
 
-                // Update local UI state optimistically or based on confirmation
+                // Update local UI state optimistically
                 var messageInList = Messages.FirstOrDefault(m => m.Id == messageId);
                 if (messageInList != null && !messageInList.IsRead)
                 {
@@ -668,44 +667,39 @@ namespace Solvix.Client.MVVM.ViewModels
         {
             if (msg.IsOwnMessage)
             {
-                // Logic for own messages: If it's read by recipient, status is Read.
-                // Otherwise, assume Delivered if it has a valid ID (server saved it and potentially delivered).
-                // If ID is 0, it's likely still Sending (optimistic).
-                if (msg.IsRead) // IsRead usually means read by *recipient* for your own messages
+                // Logic for own messages
+                if (msg.IsRead)
                 {
                     msg.Status = Constants.MessageStatus.Read;
                 }
-                else if (msg.Id > 0) // Has a server ID, assume delivered if not read
+                else if (msg.Id > 0)
                 {
-                    msg.Status = Constants.MessageStatus.Delivered; // Default to Delivered if sent & not read
+                    msg.Status = Constants.MessageStatus.Sent; // Default to Sent if we have a server ID
                 }
                 else
                 {
-                    msg.Status = Constants.MessageStatus.Sending; // Optimistic message
+                    msg.Status = Constants.MessageStatus.Sending; // Optimistic message or pending
                 }
             }
             else
             {
-                // Logic for messages from others: If IsRead is true, status is Read.
-                // Otherwise, it's Delivered (since we received it).
+                // Logic for messages from others
                 msg.Status = msg.IsRead ? Constants.MessageStatus.Read : Constants.MessageStatus.Delivered;
             }
         }
 
         private void ScrollToBottom()
         {
-            // Implement scroll logic if you have a reference to the UI element (e.g., CollectionView)
-            // This often requires interaction with the View or using messaging centers.
-            // Example concept (needs actual implementation):
-            // MessagingCenter.Send(this, "ScrollChatToBottom");
-            _logger.LogTrace("ScrollToBottom requested (implementation needed in View/Page).");
+            // Implementation would ideally use a reference to the CollectionView
+            // For now we just log since we don't have a direct reference to the UI
+            _logger.LogTrace("ScrollToBottom requested (implementation needed in View or using messaging)");
         }
 
         private async void ProcessPendingMessages()
         {
             // Implementation to resend messages queued while offline
-            _logger.LogInformation("Processing pending messages...");
-            // Similar logic to SignalRService's ProcessPendingMessages if needed here
+            _logger.LogInformation("Processing any pending messages for chat {ChatId}", ActualChatId);
+            // Would typically check for unsent messages and attempt to resend them
         }
 
         #endregion

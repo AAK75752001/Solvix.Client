@@ -22,7 +22,7 @@ namespace Solvix.Client.Core.Services
         private readonly ConcurrentQueue<PendingMessage> _messageQueue = new ConcurrentQueue<PendingMessage>();
         private bool _isProcessingQueue = false;
 
-        // اعلان رویدادها
+        // Events
         public event Action<MessageModel>? OnMessageReceived;
         public event Action<Guid, int, int>? OnMessageStatusUpdated;
         public event Action<long, bool>? OnUserStatusChanged;
@@ -53,7 +53,7 @@ namespace Solvix.Client.Core.Services
             await _connectionSemaphore.WaitAsync();
             try
             {
-                // بررسی مجدد برای اطمینان از اینکه در زمان انتظار، اتصال برقرار نشده است
+                // Double check to ensure connection wasn't established while waiting
                 if (IsConnected || _isConnecting) return;
                 _isConnecting = true;
 
@@ -80,7 +80,7 @@ namespace Solvix.Client.Core.Services
                     _logger.LogInformation("SignalR connection established successfully");
                     OnConnectionStateChanged?.Invoke(true);
 
-                    // پردازش پیام‌های در صف
+                    // Process queued messages
                     ProcessPendingMessages();
                 }
                 catch (Exception ex)
@@ -156,7 +156,7 @@ namespace Solvix.Client.Core.Services
 
             try
             {
-                await _hubConnection!.InvokeAsync("MarkAsRead", chatId, messageId);
+                await _hubConnection!.InvokeAsync("MarkMessageAsRead", messageId);
                 _logger.LogInformation("Message {MessageId} marked as read via SignalR", messageId);
             }
             catch (Exception ex)
@@ -173,6 +173,7 @@ namespace Solvix.Client.Core.Services
             try
             {
                 await _hubConnection!.InvokeAsync("UserTyping", chatId, isTyping);
+                _logger.LogDebug("Sent typing status ({IsTyping}) for chat {ChatId}", isTyping, chatId);
             }
             catch (Exception ex)
             {
@@ -211,6 +212,7 @@ namespace Solvix.Client.Core.Services
             _hubConnection.On<long, bool>("UserStatusChanged", OnUserStatusChangedHandler);
             _hubConnection.On<Guid, long, bool>("UserTyping", OnUserTypingHandler);
             _hubConnection.On<string, int>("MessageCorrelationConfirmation", OnMessageCorrelationConfirmationHandler);
+            _hubConnection.On<string>("ReceiveError", message => _logger.LogError("SignalR Error: {Message}", message));
             _hubConnection.Closed += OnConnectionClosed;
         }
 

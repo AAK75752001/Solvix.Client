@@ -9,16 +9,24 @@ namespace Solvix.Client.Core.Helpers
         {
             if (message == null) return;
 
+            // Only update status if the new status is higher or if it's a failure
             if (newStatus == Constants.MessageStatus.Failed || newStatus > message.Status)
             {
                 var oldStatus = message.Status;
                 message.Status = newStatus;
                 logger?.LogDebug("Updated message {MessageId} status from {OldStatus} to {NewStatus}",
                     message.Id, StatusToString(oldStatus), StatusToString(newStatus));
+
+                // Update related properties based on status
+                if (newStatus == Constants.MessageStatus.Read)
+                {
+                    message.IsRead = true;
+                    if (!message.ReadAt.HasValue) message.ReadAt = DateTime.UtcNow;
+                }
             }
             else
             {
-                logger?.LogDebug("Ignored status update for message {MessageId} from {CurrentStatus} to {NewStatus} (no downgrade)",
+                logger?.LogDebug("Ignored status update for message {MessageId} from {CurrentStatus} to {NewStatus} (no upgrade)",
                     message.Id, StatusToString(message.Status), StatusToString(newStatus));
             }
         }
@@ -45,7 +53,7 @@ namespace Solvix.Client.Core.Helpers
                     Constants.MessageStatus.Failed => "❌",
                     Constants.MessageStatus.Sending => "⏱️",
                     Constants.MessageStatus.Sent => "✓",
-                    Constants.MessageStatus.Delivered => "✓✓",
+                    Constants.MessageStatus.Delivered => "✓",
                     Constants.MessageStatus.Read => "✓✓",
                     _ => "⏱️"
                 };
@@ -56,8 +64,8 @@ namespace Solvix.Client.Core.Helpers
                 {
                     Constants.MessageStatus.Failed => "error_outline",
                     Constants.MessageStatus.Sending => "schedule",
-                    Constants.MessageStatus.Sent => "done",
-                    Constants.MessageStatus.Delivered => "done_all",
+                    Constants.MessageStatus.Sent => "check",
+                    Constants.MessageStatus.Delivered => "check",
                     Constants.MessageStatus.Read => "done_all",
                     _ => "schedule"
                 };
@@ -79,32 +87,39 @@ namespace Solvix.Client.Core.Helpers
 
         public static Color GetStatusIconColor(int status)
         {
-            object resourceColor = Colors.Transparent;
-            bool found = false;
+            Color defaultColor = Colors.Gray;
+            Color readColor = Colors.DodgerBlue;
+            Color errorColor = Colors.Red;
 
-            if (status == Constants.MessageStatus.Read)
+            // Try to use resource colors if available
+            if (Application.Current?.Resources != null)
             {
-                found = Application.Current?.Resources.TryGetValue("PrimaryColor", out resourceColor) ?? false;
-            }
-            else if (status == Constants.MessageStatus.Failed)
-            {
-                found = Application.Current?.Resources.TryGetValue("ErrorColor", out resourceColor) ?? false;
-            }
-            else
-            {
-                found = Application.Current?.Resources.TryGetValue("TertiaryTextColor", out resourceColor) ?? false;
-            }
+                if (status == Constants.MessageStatus.Read &&
+                    Application.Current.Resources.TryGetValue("PrimaryColor", out var primary) &&
+                    primary is Color primaryColor)
+                {
+                    readColor = primaryColor;
+                }
 
-            if (found && resourceColor is Color color)
-            {
-                return color;
+                if (status == Constants.MessageStatus.Failed &&
+                    Application.Current.Resources.TryGetValue("ErrorColor", out var error) &&
+                    error is Color errorColorRes)
+                {
+                    errorColor = errorColorRes;
+                }
+
+                if (Application.Current.Resources.TryGetValue("TertiaryTextColor", out var tertiary) &&
+                    tertiary is Color tertiaryColor)
+                {
+                    defaultColor = tertiaryColor;
+                }
             }
 
             return status switch
             {
-                Constants.MessageStatus.Read => Colors.DodgerBlue,
-                Constants.MessageStatus.Failed => Colors.Red,
-                _ => Colors.Gray
+                Constants.MessageStatus.Read => readColor,
+                Constants.MessageStatus.Failed => errorColor,
+                _ => defaultColor
             };
         }
     }

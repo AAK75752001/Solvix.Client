@@ -1,7 +1,5 @@
 ﻿using Solvix.Client.Core.Interfaces;
 using Solvix.Client.Core.Models;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 
 namespace Solvix.Client.Core.Services
@@ -12,7 +10,10 @@ namespace Solvix.Client.Core.Services
         private readonly ILogger<ChatService> _logger;
         private readonly IToastService _toastService;
 
-        public ChatService(IApiService apiService, ILogger<ChatService> logger, IToastService toastService)
+        public ChatService(
+            IApiService apiService,
+            ILogger<ChatService> logger,
+            IToastService toastService)
         {
             _apiService = apiService;
             _logger = logger;
@@ -42,13 +43,19 @@ namespace Solvix.Client.Core.Services
             {
                 string endpoint = $"{Constants.Endpoints.GetMessages}/{chatId}/messages";
                 var queryParams = new Dictionary<string, string>
-                 {
-                     { "skip", skip.ToString() },
-                     { "take", take.ToString() }
-                 };
-                _logger.LogInformation("Fetching messages for chat {ChatId} (Skip: {Skip}, Take: {Take})...", chatId, skip, take);
+                {
+                    { "skip", skip.ToString() },
+                    { "take", take.ToString() }
+                };
+
+                _logger.LogInformation("Fetching messages for chat {ChatId} (Skip: {Skip}, Take: {Take})...",
+                    chatId, skip, take);
+
                 var messages = await _apiService.GetAsync<List<MessageModel>>(endpoint, queryParams);
-                _logger.LogInformation("Fetched {Count} messages for chat {ChatId}.", messages?.Count ?? 0, chatId);
+
+                _logger.LogInformation("Fetched {Count} messages for chat {ChatId}.",
+                    messages?.Count ?? 0, chatId);
+
                 return messages;
             }
             catch (Exception ex)
@@ -65,8 +72,18 @@ namespace Solvix.Client.Core.Services
             {
                 string endpoint = $"{Constants.Endpoints.GetChat}/{chatId}";
                 _logger.LogInformation("Fetching chat details for {ChatId}...", chatId);
+
                 var chat = await _apiService.GetAsync<ChatModel>(endpoint);
-                _logger.LogInformation("Fetched chat details for {ChatId}.", chatId);
+
+                if (chat != null)
+                {
+                    _logger.LogInformation("Fetched chat details for {ChatId}.", chatId);
+                }
+                else
+                {
+                    _logger.LogWarning("Chat with ID {ChatId} not found or access denied.", chatId);
+                }
+
                 return chat;
             }
             catch (Exception ex)
@@ -77,13 +94,13 @@ namespace Solvix.Client.Core.Services
             }
         }
 
-
         public async Task<(Guid? chatId, bool alreadyExists)> StartChatWithUserAsync(long recipientUserId)
         {
             try
             {
                 _logger.LogInformation("Starting chat with user {RecipientUserId}...", recipientUserId);
-                var result = await _apiService.PostAsync<dynamic>(Constants.Endpoints.StartChat, new { recipientUserId }); // ارسال به صورت anonymous object
+
+                var result = await _apiService.PostAsync<dynamic>(Constants.Endpoints.StartChat, recipientUserId);
 
                 if (result != null && result.chatId != null)
                 {
@@ -91,7 +108,10 @@ namespace Solvix.Client.Core.Services
                     {
                         Guid chatIdResult = Guid.Parse(result.chatId.ToString());
                         bool alreadyExistsResult = bool.Parse(result.alreadyExists.ToString());
-                        _logger.LogInformation("Chat started/found with user {RecipientUserId}. ChatId: {ChatId}, Existed: {AlreadyExists}", recipientUserId, chatIdResult, alreadyExistsResult);
+
+                        _logger.LogInformation("Chat started/found with user {RecipientUserId}. ChatId: {ChatId}, Existed: {AlreadyExists}",
+                            recipientUserId, chatIdResult, alreadyExistsResult);
+
                         return (chatIdResult, alreadyExistsResult);
                     }
                     catch (Exception parseEx)
@@ -116,15 +136,38 @@ namespace Solvix.Client.Core.Services
             }
         }
 
-
         public async Task<MessageModel?> SendMessageAsync(Guid chatId, string content)
         {
             try
             {
-                var dto = new { ChatId = chatId, Content = content };
+                if (string.IsNullOrWhiteSpace(content))
+                {
+                    _logger.LogWarning("Attempted to send empty message to chat {ChatId}", chatId);
+                    await _toastService.ShowToastAsync("متن پیام نمی‌تواند خالی باشد", ToastType.Warning);
+                    return null;
+                }
+
+                var dto = new SendMessageDto
+                {
+                    ChatId = chatId,
+                    Content = content
+                };
+
                 _logger.LogInformation("Sending message to chat {ChatId}...", chatId);
+
                 var message = await _apiService.PostAsync<MessageModel>(Constants.Endpoints.SendMessage, dto);
-                _logger.LogInformation("Message sent response received for chat {ChatId}.", chatId);
+
+                if (message != null)
+                {
+                    _logger.LogInformation("Message sent successfully to chat {ChatId}. Message ID: {MessageId}",
+                        chatId, message.Id);
+                }
+                else
+                {
+                    _logger.LogWarning("Received null response from server when sending message to chat {ChatId}",
+                        chatId);
+                }
+
                 return message;
             }
             catch (Exception ex)
@@ -139,10 +182,21 @@ namespace Solvix.Client.Core.Services
         {
             try
             {
+                if (messageIds == null || !messageIds.Any())
+                {
+                    _logger.LogWarning("Attempted to mark empty message list as read for chat {ChatId}", chatId);
+                    return;
+                }
+
                 string endpoint = $"{Constants.Endpoints.MarkRead}/{chatId}/mark-read";
-                _logger.LogInformation("Marking {Count} messages as read in chat {ChatId}...", messageIds.Count, chatId);
+
+                _logger.LogInformation("Marking {Count} messages as read in chat {ChatId}...",
+                    messageIds.Count, chatId);
+
                 await _apiService.PostAsync<object>(endpoint, messageIds);
-                _logger.LogInformation("Messages marked as read in chat {ChatId}.", chatId);
+
+                _logger.LogInformation("Successfully marked {Count} messages as read in chat {ChatId}.",
+                    messageIds.Count, chatId);
             }
             catch (Exception ex)
             {
@@ -150,5 +204,12 @@ namespace Solvix.Client.Core.Services
                 await _toastService.ShowToastAsync("خطا در بروزرسانی وضعیت پیام‌ها", ToastType.Error);
             }
         }
+    }
+
+    // Helper class for sending messages
+    public class SendMessageDto
+    {
+        public Guid ChatId { get; set; }
+        public string Content { get; set; } = string.Empty;
     }
 }

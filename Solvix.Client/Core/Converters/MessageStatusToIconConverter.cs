@@ -9,10 +9,10 @@ namespace Solvix.Client.Core.Converters
         {
             if (value is int status)
             {
-                bool useEmoji = parameter?.ToString() != "IconCode";
+                bool useEmoji = parameter?.ToString() == "UseEmoji";
                 return MessageStatusHelper.GetStatusIcon(status, useEmoji);
             }
-            return "watch_later";
+            return "schedule";
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

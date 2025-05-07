@@ -18,13 +18,13 @@
             <toolkit:InvertedBoolConverter x:Key="InverseBoolConverter" />
             <converters:BoolToColorConverter x:Key="StatusColorConverter"/>
 
-            <!-- رنگ‌های حباب پیام -->
+            <!-- Message Bubble Colors -->
             <Color x:Key="SentMessageBubbleColor">#DCF8C6</Color>
             <Color x:Key="ReceivedMessageBubbleColor">White</Color>
             <Color x:Key="SentMessageTextColor">#222222</Color>
             <Color x:Key="ReceivedMessageTextColor">#222222</Color>
 
-            <!-- استایل‌های کاربردی -->
+            <!-- Useful Styles -->
             <Style x:Key="ChatInputBorderStyle" TargetType="Border">
                 <Setter Property="Stroke" Value="{DynamicResource FrameBorderColor}"/>
                 <Setter Property="StrokeThickness" Value="1"/>
@@ -85,39 +85,119 @@
         </ResourceDictionary>
     </ContentPage.Resources>
 
-    <ContentPage.ToolbarItems>
-        <ToolbarItem Text="تنظیمات چت"
-                      IconImageSource="{FontImageSource FontFamily=MaterialIcons, Glyph=more_vert, Color={DynamicResource PrimaryTextColor}}"
-                      Order="Primary" Priority="0"
-                      Command="{Binding GoToChatSettingsCommand}"/>
-    </ContentPage.ToolbarItems>
+    <Grid RowDefinitions="Auto, *, Auto, Auto" ColumnDefinitions="*" BackgroundColor="{DynamicResource PageBackgroundColor}">
 
-    <Grid RowDefinitions="*, Auto, Auto" ColumnDefinitions="*" BackgroundColor="{DynamicResource PageBackgroundColor}">
+        <!-- Chat Header - SIMPLIFIED VERSION WITHOUT PROBLEMATIC BORDER -->
+        <Grid Grid.Row="0" 
+              BackgroundColor="{DynamicResource CardBackgroundColor}"
+              Padding="10,5" 
+              ColumnDefinitions="Auto,*,Auto" 
+              ColumnSpacing="10">
 
-        <ActivityIndicator Grid.Row="0" Grid.Column="0"
+            <!-- Bottom Separator Line -->
+            <BoxView Grid.ColumnSpan="3"
+                     HeightRequest="1"
+                     Color="{DynamicResource FrameBorderColor}"
+                     VerticalOptions="End"
+                     HorizontalOptions="Fill"
+                     Margin="0,0,0,-1"/>
+
+            <!-- Back Button -->
+            <Button Grid.Column="0"
+                    Text="arrow_back"
+                    FontFamily="MaterialIcons"
+                    FontSize="24"
+                    BackgroundColor="Transparent"
+                    TextColor="{DynamicResource PrimaryTextColor}"
+                    Command="{Binding GoBackCommand}"
+                    Padding="0"
+                    HeightRequest="40"
+                    WidthRequest="40"
+                    HorizontalOptions="Start"
+                    VerticalOptions="Center"/>
+
+            <!-- User Info -->
+            <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                <Label Text="{Binding CurrentChat.DisplayTitle}"
+                       FontSize="16"
+                       FontAttributes="Bold"
+                       TextColor="{DynamicResource PrimaryTextColor}"
+                       LineBreakMode="TailTruncation"/>
+                <Label TextColor="{DynamicResource SecondaryTextColor}" FontSize="12">
+                    <Label.Triggers>
+                        <DataTrigger TargetType="Label" 
+                                    Binding="{Binding CurrentChat.OtherParticipant.IsOnline}" 
+                                    Value="True">
+                            <Setter Property="Text" Value="آنلاین"/>
+                        </DataTrigger>
+                        <DataTrigger TargetType="Label" 
+                                    Binding="{Binding CurrentChat.OtherParticipant.IsOnline}" 
+                                    Value="False">
+                            <Setter Property="Text" Value="{Binding CurrentChat.OtherParticipant.LastActiveText}"/>
+                        </DataTrigger>
+                    </Label.Triggers>
+                </Label>
+            </VerticalStackLayout>
+
+            <!-- User Avatar -->
+            <Grid Grid.Column="2" HeightRequest="40" WidthRequest="40">
+                <Border BackgroundColor="{DynamicResource TertiaryColor}"
+                        WidthRequest="40"
+                        HeightRequest="40"
+                        StrokeShape="RoundRectangle 20"
+                        HorizontalOptions="End"
+                        VerticalOptions="Center">
+                    <Label Text="{Binding CurrentChat.OtherParticipant.Initials}"
+                           TextColor="{DynamicResource InverseTextColor}"
+                           FontSize="16"
+                           FontAttributes="Bold"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center"/>
+                </Border>
+                <Border WidthRequest="12"
+                        HeightRequest="12"
+                        StrokeThickness="2"
+                        Stroke="{DynamicResource CardBackgroundColor}"
+                        BackgroundColor="{Binding CurrentChat.OtherParticipant.IsOnline, Converter={StaticResource StatusColorConverter}}"
+                        StrokeShape="RoundRectangle 6"
+                        HorizontalOptions="End"
+                        VerticalOptions="End"/>
+            </Grid>
+        </Grid>
+
+        <!-- Chat Messages -->
+        <ActivityIndicator Grid.Row="1"
                            IsRunning="{Binding IsLoadingMessages}"
                            IsVisible="{Binding IsLoadingMessages}"
                            HorizontalOptions="Center" VerticalOptions="Center"
                            Color="{DynamicResource PrimaryColor}"/>
 
-        <CollectionView Grid.Row="0" Grid.Column="0"
+        <CollectionView Grid.Row="1"
                         ItemsSource="{Binding Messages}"
                         SelectionMode="None"
                         VerticalOptions="FillAndExpand"
                         Margin="5"
                         ItemsUpdatingScrollMode="KeepLastItemInView">
+            <CollectionView.Header>
+                <Grid HeightRequest="40">
+                    <ActivityIndicator IsRunning="{Binding IsLoadingMessages}" 
+                                       IsVisible="{Binding IsLoadingMessages}"
+                                       VerticalOptions="Center"
+                                       Color="{DynamicResource PrimaryColor}"/>
+                </Grid>
+            </CollectionView.Header>
             <CollectionView.ItemTemplate>
                 <DataTemplate x:DataType="model:MessageModel">
-                    <!-- استفاده از یک Grid برای کل ردیف پیام -->
+                    <!-- Use a Grid for the entire message row -->
                     <Grid Padding="8,4" ColumnSpacing="0">
                         <Grid.ColumnDefinitions>
-                            <!-- ستون سمت چپ برای پیام‌های دریافتی -->
+                            <!-- Left column for received messages -->
                             <ColumnDefinition Width="*" />
-                            <!-- ستون سمت راست برای پیام‌های ارسالی -->
+                            <!-- Right column for sent messages -->
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <!-- پیام دریافتی (سمت چپ) -->
+                        <!-- Received Message (left) -->
                         <Border Grid.Column="0" 
                                 BackgroundColor="{StaticResource ReceivedMessageBubbleColor}"
                                 Padding="12,8" 
@@ -144,7 +224,7 @@
                             </StackLayout>
                         </Border>
 
-                        <!-- پیام ارسالی (سمت راست) -->
+                        <!-- Sent Message (right) -->
                         <Border Grid.Column="1" 
                                 BackgroundColor="{StaticResource SentMessageBubbleColor}"
                                 Padding="12,8" 
@@ -183,23 +263,19 @@
                     </Grid>
                 </DataTemplate>
             </CollectionView.ItemTemplate>
-            <CollectionView.Header>
-                <ActivityIndicator IsRunning="{Binding IsLoadingMessages}" IsVisible="{Binding IsLoadingMessages}"
-                                    Margin="0,10" Color="{DynamicResource PrimaryColor}"/>
-            </CollectionView.Header>
         </CollectionView>
 
         <!-- Status Bar for typing and connection status -->
-        <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource StatusBarStyle}"
+        <Border Grid.Row="2" Style="{StaticResource StatusBarStyle}"
                 IsVisible="{Binding IsTyping}">
             <HorizontalStackLayout Spacing="5">
                 <Label Text="keyboard" Style="{StaticResource StatusIconStyle}"/>
-                <Label Text="در حال تایپ..." Style="{StaticResource StatusTextStyle}"/>
+                <Label Text="{Binding TypingIndicatorText}" Style="{StaticResource StatusTextStyle}"/>
             </HorizontalStackLayout>
         </Border>
 
         <!-- Connection Status (visible when not connected) -->
-        <Border Grid.Row="1" Grid.Column="0" Style="{StaticResource StatusBarStyle}"
+        <Border Grid.Row="2" Style="{StaticResource StatusBarStyle}"
                 IsVisible="{Binding IsConnected, Converter={StaticResource InverseBoolConverter}}">
             <HorizontalStackLayout Spacing="5">
                 <Label Text="wifi_off" Style="{StaticResource StatusIconStyle}"/>
@@ -208,7 +284,7 @@
         </Border>
 
         <!-- Chat Input Area -->
-        <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource ChatInputBorderStyle}">
+        <Border Grid.Row="3" Style="{StaticResource ChatInputBorderStyle}">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="5">
                 <Button Grid.Column="0" Text="attach_file" Command="{Binding AttachFileCommand}" Style="{StaticResource ChatInputButtonStyle}"/>
                 <Editor x:Name="MessageEditor" Grid.Column="1" Text="{Binding NewMessageText, Mode=TwoWay}" Style="{StaticResource ChatInputEditorStyle}" IsEnabled="{Binding IsSendingMessage, Converter={StaticResource InverseBoolConverter}}"/>
