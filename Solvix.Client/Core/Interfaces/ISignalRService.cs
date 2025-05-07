@@ -11,6 +11,7 @@ namespace Solvix.Client.Core.Interfaces
         event Action<long, bool>? OnUserStatusChanged;
         event Action<bool>? OnConnectionStateChanged;
         event Action<Guid, long, bool>? OnUserTyping;
+        event Action<string, int>? OnMessageCorrelationConfirmation;
 
         Task StartAsync();
         Task StopAsync(bool autoReconnect = true);

@@ -17,7 +17,7 @@ namespace Solvix.Client.Core.Models
         private bool _isEdited;
         private DateTime? _editedAt;
         private bool? _isOwnMessage;
-        private int _status = Constants.MessageStatus.Sending;
+        private int _status = Constants.MessageStatus.Unknown;
         private string _sentAtFormatted = string.Empty;
         private string _correlationId = string.Empty;
 
@@ -30,6 +30,15 @@ namespace Solvix.Client.Core.Models
                 {
                     _id = value;
                     OnPropertyChanged();
+                    // If Id is set (from server), status shouldn't be Sending unless explicitly set
+                    if (_status == Constants.MessageStatus.Sending && _id > 0)
+                    {
+                        Status = Constants.MessageStatus.Sent;
+                    }
+                    else if (_status == Constants.MessageStatus.Unknown && _id > 0)
+                    {
+                        Status = Constants.MessageStatus.Sent; // Default to Sent if loaded with ID
+                    }
                 }
             }
         }
@@ -56,6 +65,9 @@ namespace Solvix.Client.Core.Models
                 {
                     _sentAt = value;
                     OnPropertyChanged();
+                    _sentAtFormatted = string.Empty; // Force reformat on change
+                    OnPropertyChanged(nameof(SentAtFormatted));
+                    OnPropertyChanged(nameof(LocalSentAt));
                 }
             }
         }
@@ -108,6 +120,11 @@ namespace Solvix.Client.Core.Models
                 {
                     _isRead = value;
                     OnPropertyChanged();
+                    // Automatically update status if set to read
+                    if (_isRead && Status < Constants.MessageStatus.Read)
+                    {
+                        Status = Constants.MessageStatus.Read;
+                    }
                 }
             }
         }
@@ -165,16 +182,8 @@ namespace Solvix.Client.Core.Models
             }
         }
 
-        // خصوصیت‌های محلی برای رابط کاربری
         [JsonIgnore]
-        public DateTime LocalSentAt
-        {
-            get
-            {
-                // تبدیل زمان سرور به زمان محلی برای نمایش دقیق
-                return SentAt.Kind == DateTimeKind.Utc ? SentAt.ToLocalTime() : SentAt;
-            }
-        }
+        public DateTime LocalSentAt => SentAt.Kind == DateTimeKind.Utc ? SentAt.ToLocalTime() : SentAt;
 
         [JsonIgnore]
         public int Status
@@ -187,6 +196,7 @@ namespace Solvix.Client.Core.Models
                     _status = value;
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(StatusIcon));
+                    OnPropertyChanged(nameof(IsSending));
                     OnPropertyChanged(nameof(IsSent));
                     OnPropertyChanged(nameof(IsDelivered));
                     OnPropertyChanged(nameof(IsReadByReceiver));
@@ -200,18 +210,11 @@ namespace Solvix.Client.Core.Models
         {
             get
             {
-                if (!string.IsNullOrEmpty(_sentAtFormatted))
-                    return _sentAtFormatted;
-
-                return FormatMessageTime();
-            }
-            set
-            {
-                if (_sentAtFormatted != value)
+                if (string.IsNullOrEmpty(_sentAtFormatted))
                 {
-                    _sentAtFormatted = value;
-                    OnPropertyChanged();
+                    _sentAtFormatted = FormatMessageTime();
                 }
+                return _sentAtFormatted;
             }
         }
 
@@ -229,15 +232,18 @@ namespace Solvix.Client.Core.Models
             }
         }
 
-        // سایر خصوصیت‌های محاسباتی بدون تغییر
-        [JsonIgnore]
-        public bool IsSent => Status >= Constants.MessageStatus.Sent;
 
         [JsonIgnore]
-        public bool IsDelivered => Status >= Constants.MessageStatus.Delivered;
+        public bool IsSending => Status == Constants.MessageStatus.Sending;
 
         [JsonIgnore]
-        public bool IsReadByReceiver => Status >= Constants.MessageStatus.Read;
+        public bool IsSent => Status >= Constants.MessageStatus.Sent && Status != Constants.MessageStatus.Failed;
+
+        [JsonIgnore]
+        public bool IsDelivered => Status >= Constants.MessageStatus.Delivered && Status != Constants.MessageStatus.Failed;
+
+        [JsonIgnore]
+        public bool IsReadByReceiver => Status >= Constants.MessageStatus.Read && Status != Constants.MessageStatus.Failed;
 
         [JsonIgnore]
         public bool IsFailed => Status == Constants.MessageStatus.Failed;
@@ -247,23 +253,17 @@ namespace Solvix.Client.Core.Models
         {
             get
             {
-                if (IsFailed)
-                    return "❌"; // نماد خطا (پیام ارسال نشده)
+                if (!IsOwnMessage) return string.Empty;
 
-                if (Status == Constants.MessageStatus.Sending)
-                    return "⏱"; // ساعت (در حال ارسال)
-
-                if (IsReadByReceiver)
-                    return "✓✓"; // دو تیک (خوانده شده)
-
-                if (IsDelivered)
-                    return "✓"; // یک تیک (تحویل داده شده)
-
-                if (IsSent)
-                    return "✓"; // یک تیک (ارسال شده)
-
-                // حالت پیش‌فرض
-                return "⏱"; // ساعت (در حال ارسال)
+                return Status switch
+                {
+                    Constants.MessageStatus.Failed => "❌",
+                    Constants.MessageStatus.Sending => "⏱️",
+                    Constants.MessageStatus.Sent => "✓🖥",
+                    Constants.MessageStatus.Delivered => "✓",
+                    Constants.MessageStatus.Read => "✓✓",
+                    _ => "⏱️"
+                };
             }
         }
 
@@ -271,22 +271,17 @@ namespace Solvix.Client.Core.Models
         {
             try
             {
-                // تبدیل زمان سرور به زمان محلی
                 var localTime = LocalSentAt;
-
-                // فقط نمایش ساعت و دقیقه
                 return localTime.ToString("HH:mm");
             }
             catch
             {
-                // در صورت بروز خطا، از قالب ساده استفاده کنید
                 return SentAt.ToString("HH:mm");
             }
         }
 
-        // ایجاد امضای منحصر به فرد برای جلوگیری از تکرار پیام
         [JsonIgnore]
-        public string Signature => $"{SenderId}:{Content.GetHashCode()}:{SentAt.Ticks}:{CorrelationId}";
+        public string Signature => $"{SenderId}:{Content?.GetHashCode() ?? 0}:{SentAt.Ticks}:{CorrelationId}";
 
         #region INotifyPropertyChanged
         public event PropertyChangedEventHandler PropertyChanged;
@@ -297,40 +292,41 @@ namespace Solvix.Client.Core.Models
         }
         #endregion
 
-        // بازنویسی Equals و GetHashCode برای مقایسه بهتر
         public override bool Equals(object obj)
         {
             if (obj is MessageModel other)
             {
-                // اگر هر دو پیام دارای CorrelationId باشند و یکسان باشند
                 if (!string.IsNullOrEmpty(CorrelationId) && !string.IsNullOrEmpty(other.CorrelationId))
                 {
                     return CorrelationId == other.CorrelationId;
                 }
-
-                // پیام‌ها را برابر در نظر بگیرید اگر همان شناسه را داشته باشند (اگر شناسه > 0)
                 if (Id > 0 && other.Id > 0)
+                {
                     return Id == other.Id;
+                }
+                if (Id <= 0 && other.Id <= 0 && !string.IsNullOrEmpty(CorrelationId) && CorrelationId == other.CorrelationId)
+                {
+                    return true;
+                }
+                if (Id <= 0 && other.Id <= 0)
+                {
+                    return SenderId == other.SenderId &&
+                     Content == other.Content &&
+                     Math.Abs((SentAt - other.SentAt).TotalSeconds) < 5;
+                }
 
-                // مقایسه بر اساس محتوا و زمان ارسال
-                return SenderId == other.SenderId &&
-                       Content == other.Content &&
-                       Math.Abs((SentAt - other.SentAt).TotalSeconds) < 60;
             }
             return false;
         }
 
         public override int GetHashCode()
         {
-            // اگر CorrelationId وجود دارد، از آن استفاده کنیم
             if (!string.IsNullOrEmpty(CorrelationId))
-                return CorrelationId.GetHashCode();
-
-            // از شناسه برای پیام‌های دائمی، از امضا برای موقت‌ها
+                return HashCode.Combine(CorrelationId);
             if (Id > 0)
                 return Id.GetHashCode();
 
-            return Signature.GetHashCode();
+            return HashCode.Combine(SenderId, Content, SentAt.Ticks);
         }
     }
 }

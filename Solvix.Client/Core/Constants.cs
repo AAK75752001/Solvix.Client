@@ -45,6 +45,7 @@
         // Message Status
         public static class MessageStatus
         {
+            public const int Unknown = -1;
             public const int Sending = 0;    // در حال ارسال - نمایش آیکون ساعت
             public const int Sent = 1;       // ارسال شده به سرور - نمایش یک تیک
             public const int Delivered = 2;  // دریافت شده توسط گیرنده - نمایش یک تیک

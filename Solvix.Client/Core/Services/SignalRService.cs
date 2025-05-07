@@ -28,6 +28,7 @@ namespace Solvix.Client.Core.Services
         public event Action<long, bool>? OnUserStatusChanged;
         public event Action<bool>? OnConnectionStateChanged;
         public event Action<Guid, long, bool>? OnUserTyping;
+        public event Action<string, int>? OnMessageCorrelationConfirmation;
 
         public bool IsConnected => _hubConnection?.State == HubConnectionState.Connected;
 
@@ -116,13 +117,15 @@ namespace Solvix.Client.Core.Services
 
         public async Task<bool> SendMessageAsync(MessageModel message)
         {
-            if (message == null)
+            if (message == null || string.IsNullOrEmpty(message.CorrelationId))
+            {
+                _logger.LogError("Cannot send message - Message or CorrelationId is null/empty.");
                 return false;
+            }
 
             if (!IsConnected)
             {
                 _logger.LogWarning("Cannot send message - SignalR not connected");
-                // ذخیره پیام در صف برای ارسال بعدی
                 QueueMessage(message);
                 await StartAsync();
                 return false;
@@ -130,13 +133,13 @@ namespace Solvix.Client.Core.Services
 
             try
             {
-                await _hubConnection!.InvokeAsync("SendMessage", message.ChatId, message.Content);
-                _logger.LogInformation("Message sent via SignalR to chat {ChatId}", message.ChatId);
+                await _hubConnection!.InvokeAsync("SendToChat", message.ChatId, message.Content, message.CorrelationId);
+                _logger.LogInformation("Message sent via SignalR to chat {ChatId} with CorrelationId {CorrelationId}", message.ChatId, message.CorrelationId);
                 return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error sending message via SignalR");
+                _logger.LogError(ex, "Error sending message via SignalR. CorrelationId: {CorrelationId}", message.CorrelationId);
                 QueueMessage(message);
                 return false;
             }
@@ -207,6 +210,7 @@ namespace Solvix.Client.Core.Services
             _hubConnection.On<Guid, int, int>("MessageStatusChanged", OnMessageStatusChangedHandler);
             _hubConnection.On<long, bool>("UserStatusChanged", OnUserStatusChangedHandler);
             _hubConnection.On<Guid, long, bool>("UserTyping", OnUserTypingHandler);
+            _hubConnection.On<string, int>("MessageCorrelationConfirmation", OnMessageCorrelationConfirmationHandler);
             _hubConnection.Closed += OnConnectionClosed;
         }
 
@@ -234,6 +238,13 @@ namespace Solvix.Client.Core.Services
             _logger.LogDebug("User {UserId} is {Status} in chat {ChatId}",
                 userId, isTyping ? "typing" : "not typing", chatId);
             OnUserTyping?.Invoke(chatId, userId, isTyping);
+        }
+
+        private void OnMessageCorrelationConfirmationHandler(string correlationId, int serverMessageId)
+        {
+            _logger.LogInformation("Received message confirmation: CorrelationId={CorrelationId}, ServerMessageId={ServerMessageId}",
+                correlationId, serverMessageId);
+            OnMessageCorrelationConfirmation?.Invoke(correlationId, serverMessageId);
         }
 
         private async Task OnConnectionClosed(Exception? exception)
@@ -287,40 +298,39 @@ namespace Solvix.Client.Core.Services
         private async void ProcessPendingMessages()
         {
             if (_isProcessingQueue || !IsConnected) return;
-
             _isProcessingQueue = true;
-
             try
             {
                 _logger.LogInformation("Processing pending message queue. Count: {Count}", _messageQueue.Count);
-
                 int processedCount = 0;
                 while (_messageQueue.TryDequeue(out PendingMessage pendingMessage))
                 {
                     if ((DateTime.UtcNow - pendingMessage.Timestamp).TotalHours > 24)
                     {
-                        _logger.LogWarning("Discarding old queued message");
+                        _logger.LogWarning("Discarding old queued message (CorrId: {CorrId})", pendingMessage.Message?.CorrelationId);
+                        continue;
+                    }
+
+                    if (pendingMessage.Message == null || string.IsNullOrEmpty(pendingMessage.Message.CorrelationId))
+                    {
+                        _logger.LogError("Found invalid message in queue, discarding.");
                         continue;
                     }
 
                     try
                     {
-                        if (pendingMessage.Message != null)
-                        {
-                            await _hubConnection!.InvokeAsync("SendMessage",
-                                pendingMessage.Message.ChatId,
-                                pendingMessage.Message.Content);
+                        await _hubConnection!.InvokeAsync("SendToChat",
+                            pendingMessage.Message.ChatId,
+                            pendingMessage.Message.Content,
+                            pendingMessage.Message.CorrelationId);
 
-                            _logger.LogInformation("Queued message sent successfully");
-                            processedCount++;
-
-                            await Task.Delay(300);
-                        }
+                        _logger.LogInformation("Queued message sent successfully (CorrId: {CorrId})", pendingMessage.Message.CorrelationId);
+                        processedCount++;
+                        await Task.Delay(300);
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Error sending queued message");
-
+                        _logger.LogError(ex, "Error sending queued message (CorrId: {CorrId})", pendingMessage.Message.CorrelationId);
                         if (pendingMessage.RetryCount < 3)
                         {
                             pendingMessage.RetryCount++;
@@ -328,23 +338,15 @@ namespace Solvix.Client.Core.Services
                         }
                         else
                         {
-                            _logger.LogWarning("Maximum retry count reached for queued message. Discarding.");
+                            _logger.LogWarning("Max retry count reached for queued message (CorrId: {CorrId}). Discarding.", pendingMessage.Message.CorrelationId);
                         }
-
                         break;
                     }
                 }
-
                 _logger.LogInformation("Processed {Count} queued messages", processedCount);
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing pending messages queue");
-            }
-            finally
-            {
-                _isProcessingQueue = false;
-            }
+            catch (Exception ex) { _logger.LogError(ex, "Error processing pending messages queue"); }
+            finally { _isProcessingQueue = false; }
         }
 
         public void Dispose()
