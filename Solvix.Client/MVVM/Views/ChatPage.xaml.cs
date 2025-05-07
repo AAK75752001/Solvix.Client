@@ -50,6 +50,14 @@ public partial class ChatPage : ContentPage
         Dispose();
     }
 
+    private void OnRemainingItemsThresholdReached(object sender, EventArgs e)
+    {
+        if (_viewModel.CanLoadMore && !_viewModel.IsLoadingMoreMessages)
+        {
+            _viewModel.LoadMoreMessagesCommand.Execute(null);
+        }
+    }
+
     private async void OnMessageTextChanged(object sender, TextChangedEventArgs e)
     {
         // اگر متن خالی شده، وضعیت تایپ را به پایان می‌رسانیم

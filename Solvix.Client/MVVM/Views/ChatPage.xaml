@@ -6,7 +6,8 @@
              xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
              xmlns:converters="clr-namespace:Solvix.Client.Core.Converters"
              x:Class="Solvix.Client.MVVM.Views.ChatPage"
-             x:DataType="vm:ChatPageViewModel">
+             x:DataType="vm:ChatPageViewModel"
+             BackgroundColor="{DynamicResource PageBackgroundColor}">
 
     <ContentPage.Resources>
         <ResourceDictionary>
@@ -60,6 +61,32 @@
                 <Setter Property="TextColor" Value="{DynamicResource InverseTextColor}"/>
             </Style>
 
+            <!-- Header Styles -->
+            <Style x:Key="ChatHeaderStyle" TargetType="Grid">
+                <Setter Property="BackgroundColor" Value="{DynamicResource CardBackgroundColor}"/>
+                <Setter Property="Padding" Value="8,6"/>
+                <Setter Property="ColumnSpacing" Value="8"/>
+            </Style>
+            <Style x:Key="ProfileCircleStyle" TargetType="Border">
+                <Setter Property="WidthRequest" Value="40"/>
+                <Setter Property="HeightRequest" Value="40"/>
+                <Setter Property="BackgroundColor" Value="{DynamicResource TertiaryColor}"/>
+                <Setter Property="StrokeShape">
+                    <RoundRectangle CornerRadius="20"/>
+                </Setter>
+                <Setter Property="HorizontalOptions" Value="End"/>
+                <Setter Property="VerticalOptions" Value="Center"/>
+            </Style>
+            <Style x:Key="InitialsLabelStyle" TargetType="Label">
+                <Setter Property="TextColor" Value="{DynamicResource InverseTextColor}"/>
+                <Setter Property="FontSize" Value="16"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+                <Setter Property="HorizontalOptions" Value="Center"/>
+                <Setter Property="VerticalOptions" Value="Center"/>
+                <Setter Property="HorizontalTextAlignment" Value="Center"/>
+                <Setter Property="VerticalTextAlignment" Value="Center"/>
+            </Style>
+
             <!-- Status Bar Styles -->
             <Style x:Key="StatusBarStyle" TargetType="Border">
                 <Setter Property="BackgroundColor" Value="{DynamicResource CardBackgroundColor}"/>
@@ -86,14 +113,8 @@
 
     <Grid RowDefinitions="Auto, *, Auto, Auto" ColumnDefinitions="*" BackgroundColor="{DynamicResource PageBackgroundColor}">
 
-        <!-- Chat Header - SIMPLIFIED VERSION WITHOUT PROBLEMATIC BORDER -->
-        <Grid Grid.Row="0" 
-              BackgroundColor="{DynamicResource CardBackgroundColor}"
-              Padding="10,5" 
-              ColumnDefinitions="Auto,*,Auto" 
-              ColumnSpacing="10">
-
-            <!-- Back Button -->
+        <!-- Chat Header - Fixed header with centered text -->
+        <Grid Grid.Row="0" Style="{StaticResource ChatHeaderStyle}" ColumnDefinitions="40,*,40">
             <Button Grid.Column="0"
                     Text="arrow_back"
                     FontFamily="MaterialIcons"
@@ -107,17 +128,21 @@
                     HorizontalOptions="Start"
                     VerticalOptions="Center"/>
 
-            <!-- User Info -->
-            <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+            <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center" HorizontalOptions="Center">
                 <Label Text="{Binding CurrentChat.OtherParticipant.DisplayName}"
                        FontSize="16"
                        FontAttributes="Bold"
                        TextColor="{DynamicResource PrimaryTextColor}"
-                       LineBreakMode="TailTruncation"/>
-                <Label TextColor="{DynamicResource SecondaryTextColor}" FontSize="12">
+                       LineBreakMode="TailTruncation"
+                       HorizontalOptions="Center"
+                       HorizontalTextAlignment="Center"/>
+                <Label TextColor="{DynamicResource SecondaryTextColor}" 
+                       FontSize="12" 
+                       HorizontalOptions="Center"
+                       HorizontalTextAlignment="Center">
                     <Label.Triggers>
                         <DataTrigger TargetType="Label" 
-                                Binding="{Binding CurrentChat.OtherParticipant.IsOnline}" 
+                                    Binding="{Binding CurrentChat.OtherParticipant.IsOnline}" 
                                     Value="True">
                             <Setter Property="Text" Value="آنلاین"/>
                         </DataTrigger>
@@ -130,20 +155,11 @@
                 </Label>
             </VerticalStackLayout>
 
-            <!-- User Avatar -->
-            <Grid Grid.Column="2" HeightRequest="40" WidthRequest="40">
-                <Border BackgroundColor="{DynamicResource TertiaryColor}"
-                        WidthRequest="40"
-                        HeightRequest="40"
-                        StrokeShape="RoundRectangle 20"
-                        HorizontalOptions="End"
-                        VerticalOptions="Center">
+            <!-- Fixed profile avatar -->
+            <Grid Grid.Column="2" HeightRequest="40" WidthRequest="40" HorizontalOptions="End">
+                <Border Style="{StaticResource ProfileCircleStyle}">
                     <Label Text="{Binding CurrentChat.OtherParticipant.Initials}"
-                           TextColor="{DynamicResource InverseTextColor}"
-                           FontSize="16"
-                           FontAttributes="Bold"
-                           HorizontalOptions="Center"
-                           VerticalOptions="Center"/>
+                           Style="{StaticResource InitialsLabelStyle}"/>
                 </Border>
                 <Border WidthRequest="12"
                         HeightRequest="12"
@@ -156,107 +172,113 @@
             </Grid>
         </Grid>
 
-        <!-- Chat Messages -->
+        <!-- Chat Messages with Scroll Detection -->
+        <RefreshView Grid.Row="1" IsRefreshing="{Binding IsLoadingMoreMessages}" Command="{Binding LoadMoreMessagesCommand}">
+            <CollectionView x:Name="MessagesCollectionView"
+                            ItemsSource="{Binding Messages}"
+                            SelectionMode="None"
+                            RemainingItemsThreshold="5"
+                            RemainingItemsThresholdReached="OnRemainingItemsThresholdReached"
+                            Margin="5"
+                            ItemsUpdatingScrollMode="KeepLastItemInView">
+                <CollectionView.EmptyView>
+                    <Grid>
+                        <Label Text="پیامی وجود ندارد" 
+                               HorizontalOptions="Center" 
+                               VerticalOptions="Center"
+                               TextColor="{DynamicResource TertiaryTextColor}"
+                               IsVisible="{Binding IsLoadingMessages, Converter={StaticResource InverseBoolConverter}}"/>
+                    </Grid>
+                </CollectionView.EmptyView>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="model:MessageModel">
+                        <!-- Use a Grid for the entire message row -->
+                        <Grid Padding="8,4" ColumnSpacing="0">
+                            <Grid.ColumnDefinitions>
+                                <!-- Left column for received messages -->
+                                <ColumnDefinition Width="*" />
+                                <!-- Right column for sent messages -->
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Received Message (left) -->
+                            <Border Grid.Column="0" 
+                                    BackgroundColor="{StaticResource ReceivedMessageBubbleColor}"
+                                    Padding="12,8" 
+                                    Margin="0,0,50,0"
+                                    StrokeShape="RoundRectangle 15,15,15,5"
+                                    IsVisible="{Binding IsOwnMessage, Converter={StaticResource InverseBoolConverter}}"
+                                    HorizontalOptions="Start">
+                                <Border.Shadow>
+                                    <Shadow Brush="{DynamicResource ShadowColor}" 
+                                            Offset="1,1" 
+                                            Opacity="0.1" 
+                                            Radius="3" />
+                                </Border.Shadow>
+                                <StackLayout Spacing="2">
+                                    <Label Text="{Binding Content}"
+                                           TextColor="{StaticResource ReceivedMessageTextColor}"
+                                           FontSize="15"
+                                           LineBreakMode="WordWrap" />
+                                    <Label Text="{Binding LocalSentAt, StringFormat='{0:HH:mm}'}"
+                                           TextColor="{DynamicResource TertiaryTextColor}"
+                                           Opacity="0.7"
+                                           FontSize="11"
+                                           HorizontalOptions="End" />
+                                </StackLayout>
+                            </Border>
+
+                            <!-- Sent Message (right) -->
+                            <Border Grid.Column="1" 
+                                    BackgroundColor="{StaticResource SentMessageBubbleColor}"
+                                    Padding="12,8" 
+                                    Margin="50,0,0,0"
+                                    StrokeShape="RoundRectangle 15,15,5,15"
+                                    IsVisible="{Binding IsOwnMessage}"
+                                    HorizontalOptions="End">
+                                <Border.Shadow>
+                                    <Shadow Brush="{DynamicResource ShadowColor}" 
+                                            Offset="1,1" 
+                                            Opacity="0.1" 
+                                            Radius="3" />
+                                </Border.Shadow>
+                                <StackLayout Spacing="2">
+                                    <Label Text="{Binding Content}"
+                                           TextColor="{StaticResource SentMessageTextColor}"
+                                           FontSize="15"
+                                           LineBreakMode="WordWrap" />
+                                    <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="4" HorizontalOptions="End">
+                                        <Label Grid.Column="0" 
+                                               Text="{Binding LocalSentAt, StringFormat='{0:HH:mm}'}"
+                                               TextColor="{StaticResource SentMessageTextColor}"
+                                               Opacity="0.7"
+                                               FontSize="11" />
+                                        <Label Grid.Column="1" 
+                                               Text="{Binding Status, Converter={StaticResource StatusIconConverter}}"
+                                               TextColor="{StaticResource SentMessageTextColor}"
+                                               Opacity="{Binding Status, Converter={StaticResource StatusOpacityConverter}}"
+                                               FontFamily="MaterialIcons"
+                                               FontSize="16"
+                                               Margin="2,-2,0,0"
+                                               VerticalOptions="End" />
+                                    </Grid>
+                                </StackLayout>
+                            </Border>
+                        </Grid>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </RefreshView>
+
+        <!-- Loading indicator for messages -->
         <ActivityIndicator Grid.Row="1"
                            IsRunning="{Binding IsLoadingMessages}"
                            IsVisible="{Binding IsLoadingMessages}"
-                           HorizontalOptions="Center" VerticalOptions="Center"
+                           HorizontalOptions="Center" 
+                           VerticalOptions="Center"
                            Color="{DynamicResource PrimaryColor}"/>
 
-        <CollectionView Grid.Row="1"
-                        ItemsSource="{Binding Messages}"
-                        SelectionMode="None"
-                        VerticalOptions="FillAndExpand"
-                        Margin="5"
-                        ItemsUpdatingScrollMode="KeepLastItemInView">
-            <CollectionView.Header>
-                <Grid HeightRequest="40">
-                    <ActivityIndicator IsRunning="{Binding IsLoadingMessages}" 
-                                       IsVisible="{Binding IsLoadingMessages}"
-                                       VerticalOptions="Center"
-                                       Color="{DynamicResource PrimaryColor}"/>
-                </Grid>
-            </CollectionView.Header>
-            <CollectionView.ItemTemplate>
-                <DataTemplate x:DataType="model:MessageModel">
-                    <!-- Use a Grid for the entire message row -->
-                    <Grid Padding="8,4" ColumnSpacing="0">
-                        <Grid.ColumnDefinitions>
-                            <!-- Left column for received messages -->
-                            <ColumnDefinition Width="*" />
-                            <!-- Right column for sent messages -->
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-
-                        <!-- Received Message (left) -->
-                        <Border Grid.Column="0" 
-                                BackgroundColor="{StaticResource ReceivedMessageBubbleColor}"
-                                Padding="12,8" 
-                                Margin="0,0,50,0"
-                                StrokeShape="RoundRectangle 15,15,15,5"
-                                IsVisible="{Binding IsOwnMessage, Converter={StaticResource InverseBoolConverter}}"
-                                HorizontalOptions="Start">
-                            <Border.Shadow>
-                                <Shadow Brush="{DynamicResource ShadowColor}" 
-                                        Offset="1,1" 
-                                        Opacity="0.1" 
-                                        Radius="3" />
-                            </Border.Shadow>
-                            <StackLayout Spacing="2">
-                                <Label Text="{Binding Content}"
-                                       TextColor="{StaticResource ReceivedMessageTextColor}"
-                                       FontSize="15"
-                                       LineBreakMode="WordWrap" />
-                                <Label Text="{Binding LocalSentAt, StringFormat='{0:HH:mm}'}"
-                                       TextColor="{DynamicResource TertiaryTextColor}"
-                                       Opacity="0.7"
-                                       FontSize="11"
-                                       HorizontalOptions="End" />
-                            </StackLayout>
-                        </Border>
-
-                        <!-- Sent Message (right) -->
-                        <Border Grid.Column="1" 
-                                BackgroundColor="{StaticResource SentMessageBubbleColor}"
-                                Padding="12,8" 
-                                Margin="50,0,0,0"
-                                StrokeShape="RoundRectangle 15,15,5,15"
-                                IsVisible="{Binding IsOwnMessage}"
-                                HorizontalOptions="End">
-                            <Border.Shadow>
-                                <Shadow Brush="{DynamicResource ShadowColor}" 
-                                        Offset="1,1" 
-                                        Opacity="0.1" 
-                                        Radius="3" />
-                            </Border.Shadow>
-                            <StackLayout Spacing="2">
-                                <Label Text="{Binding Content}"
-                                       TextColor="{StaticResource SentMessageTextColor}"
-                                       FontSize="15"
-                                       LineBreakMode="WordWrap" />
-                                <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="4" HorizontalOptions="End">
-                                    <Label Grid.Column="0" 
-                                           Text="{Binding LocalSentAt, StringFormat='{0:HH:mm}'}"
-                                           TextColor="{StaticResource SentMessageTextColor}"
-                                           Opacity="0.7"
-                                           FontSize="11" />
-                                    <Label Grid.Column="1" 
-                                           Text="{Binding Status, Converter={StaticResource StatusIconConverter}}"
-                                           TextColor="{StaticResource SentMessageTextColor}"
-                                           Opacity="{Binding Status, Converter={StaticResource StatusOpacityConverter}}"
-                                           FontFamily="MaterialIcons"
-                                           FontSize="16"
-                                           Margin="2,-2,0,0"
-                                           VerticalOptions="End" />
-                                </Grid>
-                            </StackLayout>
-                        </Border>
-                    </Grid>
-                </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
-
-        <!-- Status Bar for typing and connection status -->
+        <!-- Status Bar for typing -->
         <Border Grid.Row="2" Style="{StaticResource StatusBarStyle}"
                 IsVisible="{Binding IsTyping}">
             <HorizontalStackLayout Spacing="5">
@@ -275,7 +297,7 @@
         </Border>
 
         <!-- Chat Input Area -->
-        <Border Grid.Row="3" Style="{StaticResource ChatInputBorderStyle}">
+        <Border Grid.Row="3" Style="{StaticResource ChatInputBorderStyle}" Margin="8">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="5">
                 <Button Grid.Column="0" Text="attach_file" Command="{Binding AttachFileCommand}" Style="{StaticResource ChatInputButtonStyle}"/>
                 <Editor x:Name="MessageEditor" Grid.Column="1" Text="{Binding NewMessageText, Mode=TwoWay}" Style="{StaticResource ChatInputEditorStyle}" IsEnabled="{Binding IsSendingMessage, Converter={StaticResource InverseBoolConverter}}"/>

@@ -5,6 +5,7 @@ using Solvix.Client.Core;
 using Solvix.Client.Core.Interfaces;
 using Solvix.Client.Core.Models;
 using System.Collections.ObjectModel;
+using Solvix.Client.Core.Helpers;
 
 namespace Solvix.Client.MVVM.ViewModels
 {
@@ -28,6 +29,7 @@ namespace Solvix.Client.MVVM.ViewModels
         private readonly SemaphoreSlim _initializeSemaphore = new SemaphoreSlim(1, 1);
         private CancellationTokenSource? _loadMessagesCts;
         private Task? _initializationTask;
+        private readonly ObservableCollection<MessageModel> _messageStorage = new();
         #endregion
 
         #region Observable Properties
@@ -39,14 +41,14 @@ namespace Solvix.Client.MVVM.ViewModels
         private ChatModel? _currentChat;
 
         [ObservableProperty]
-        private ObservableCollection<MessageModel> _messages = new();
-
-        [ObservableProperty]
         [NotifyCanExecuteChangedFor(nameof(SendMessageCommand))]
         private string _newMessageText = string.Empty;
 
         [ObservableProperty]
         private bool _isLoadingMessages;
+
+        [ObservableProperty]
+        private bool _isLoadingMoreMessages;
 
         [ObservableProperty]
         [NotifyCanExecuteChangedFor(nameof(SendMessageCommand))]
@@ -62,7 +64,11 @@ namespace Solvix.Client.MVVM.ViewModels
         private string _typingIndicatorText = string.Empty;
 
         [ObservableProperty]
-        private bool canLoadMore = true;
+        private bool _canLoadMore = true;
+
+        // Use ReadOnlyObservableCollection to prevent direct modification of Messages collection
+        private ReadOnlyObservableCollection<MessageModel> _messages;
+        public ReadOnlyObservableCollection<MessageModel> Messages => _messages;
 
         #endregion
 
@@ -111,6 +117,9 @@ namespace Solvix.Client.MVVM.ViewModels
             _signalRService = signalRService;
             _logger = logger;
 
+            // Initialize the read-only collection with our storage collection
+            _messages = new ReadOnlyObservableCollection<MessageModel>(_messageStorage);
+
             _signalRService.OnMessageReceived += SignalRMessageReceived;
             _signalRService.OnMessageStatusUpdated += SignalRMessageStatusUpdated;
             _signalRService.OnConnectionStateChanged += SignalRConnectionStateChanged;
@@ -158,8 +167,7 @@ namespace Solvix.Client.MVVM.ViewModels
                 // افزودن پیام خوش‌بینانه به UI قبل از ارسال واقعی
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
-                    Messages.Add(optimisticMessage);
-                    ScrollToBottom();
+                    SafeAddMessage(optimisticMessage);
                 });
                 _logger.LogDebug("Added optimistic message with CorrelationId {CorrId} to UI.", optimisticMessage.CorrelationId);
 
@@ -205,16 +213,16 @@ namespace Solvix.Client.MVVM.ViewModels
         [RelayCommand]
         private async Task LoadMoreMessagesAsync()
         {
-            if (IsLoadingMessages || !CanLoadMore || ActualChatId == Guid.Empty) return;
+            if (IsLoadingMoreMessages || !CanLoadMore || ActualChatId == Guid.Empty) return;
 
             await _loadMessagesSemaphore.WaitAsync();
             try
             {
-                if (IsLoadingMessages || !CanLoadMore) return;
-                _logger.LogInformation("Attempting to load more messages for chat {ActualChatId}", ActualChatId);
-                IsLoadingMessages = true;
+                if (IsLoadingMoreMessages || !CanLoadMore) return;
+                _logger.LogInformation("Loading more messages for chat {ActualChatId}", ActualChatId);
+                IsLoadingMoreMessages = true;
 
-                int currentMessageCount = Messages.Count;
+                int currentMessageCount = _messageStorage.Count;
                 _loadMessagesCts = new CancellationTokenSource();
 
                 var olderMessages = await _chatService.GetChatMessagesAsync(ActualChatId, currentMessageCount, 30);
@@ -231,7 +239,8 @@ namespace Solvix.Client.MVVM.ViewModels
                         msg.IsOwnMessage = msg.SenderId == _currentUserId;
                         SetMessageStatusFromData(msg); // Set status correctly based on loaded data
 
-                        if (!Messages.Any(m => m.Id > 0 && m.Id == msg.Id)) // Prevent adding duplicates with valid IDs
+                        // Check if this message is already in our collection
+                        if (!_messageStorage.Any(m => m.Id > 0 && m.Id == msg.Id))
                         {
                             messagesToInsert.Add(msg);
                         }
@@ -243,7 +252,7 @@ namespace Solvix.Client.MVVM.ViewModels
                         {
                             foreach (var msg in messagesToInsert)
                             {
-                                Messages.Insert(0, msg); // Insert older messages at the top
+                                SafeInsertMessage(0, msg); // Insert older messages at the top
                             }
                         });
                         _logger.LogInformation("Loaded {Count} older messages for chat {ActualChatId}", messagesToInsert.Count, ActualChatId);
@@ -268,7 +277,7 @@ namespace Solvix.Client.MVVM.ViewModels
             }
             finally
             {
-                IsLoadingMessages = false;
+                IsLoadingMoreMessages = false;
                 _loadMessagesCts?.Dispose();
                 _loadMessagesCts = null;
                 _loadMessagesSemaphore.Release();
@@ -282,17 +291,14 @@ namespace Solvix.Client.MVVM.ViewModels
         private async Task EmojiAsync() => await _toastService.ShowToastAsync("انتخاب ایموجی (به زودی!)", ToastType.Info);
 
         [RelayCommand]
-        private async Task GoToChatSettingsAsync() => await _toastService.ShowToastAsync("تنظیمات چت (به زودی!)", ToastType.Info);
-
-        [RelayCommand]
         private async Task MarkAllVisibleAsReadAsync()
         {
-            if (ActualChatId == Guid.Empty || !Messages.Any()) return;
+            if (ActualChatId == Guid.Empty || !_messageStorage.Any()) return;
 
             try
             {
                 // Find messages that are not ours, have a valid ID, and are not yet read
-                var messageIdsToMark = Messages
+                var messageIdsToMark = _messageStorage
                     .Where(m => !m.IsOwnMessage && m.Id > 0 && m.Status < Constants.MessageStatus.Read)
                     .Select(m => m.Id)
                     .ToList();
@@ -306,7 +312,7 @@ namespace Solvix.Client.MVVM.ViewModels
                 {
                     foreach (var msgId in messageIdsToMark)
                     {
-                        var msg = Messages.FirstOrDefault(m => m.Id == msgId);
+                        var msg = _messageStorage.FirstOrDefault(m => m.Id == msgId);
                         if (msg != null)
                         {
                             msg.Status = Constants.MessageStatus.Read;
@@ -354,7 +360,7 @@ namespace Solvix.Client.MVVM.ViewModels
                 message.IsOwnMessage = message.SenderId == _currentUserId;
 
                 // Check if message already exists (by ID or CorrelationId)
-                var existingMessage = Messages.FirstOrDefault(m =>
+                var existingMessage = _messageStorage.FirstOrDefault(m =>
                                         (m.Id > 0 && m.Id == message.Id) ||
                                         (!string.IsNullOrEmpty(m.CorrelationId) && m.CorrelationId == message.CorrelationId));
 
@@ -362,8 +368,7 @@ namespace Solvix.Client.MVVM.ViewModels
                 {
                     _logger.LogInformation("Adding new message received via SignalR: Id {MessageId}", message.Id);
                     SetMessageStatusFromData(message); // Set initial status based on received data
-                    Messages.Add(message);
-                    ScrollToBottom(); // Scroll down after adding
+                    SafeAddMessage(message);
 
                     // Mark as read if it's not our message
                     if (!message.IsOwnMessage)
@@ -400,7 +405,7 @@ namespace Solvix.Client.MVVM.ViewModels
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
-                var optimisticMessage = Messages.FirstOrDefault(m => m.CorrelationId == correlationId);
+                var optimisticMessage = _messageStorage.FirstOrDefault(m => m.CorrelationId == correlationId);
                 if (optimisticMessage != null)
                 {
                     _logger.LogInformation("Found optimistic message for CorrId {CorrelationId}. Updating Id to {ServerMessageId} and Status to Sent.", correlationId, serverMessageId);
@@ -424,7 +429,7 @@ namespace Solvix.Client.MVVM.ViewModels
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
-                var message = Messages.FirstOrDefault(m => m.Id == messageId);
+                var message = _messageStorage.FirstOrDefault(m => m.Id == messageId);
                 if (message != null)
                 {
                     // Update status only if the new status is higher or it's a failure
@@ -474,14 +479,56 @@ namespace Solvix.Client.MVVM.ViewModels
 
         #region Private Methods
 
+        // Add message safely without recreating the collection
+        private void SafeAddMessage(MessageModel message)
+        {
+            try
+            {
+                _messageStorage.Add(message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error adding message to collection");
+            }
+        }
+
+        // Insert message safely at specific index
+        private void SafeInsertMessage(int index, MessageModel message)
+        {
+            try
+            {
+                _messageStorage.Insert(index, message);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error inserting message at index {Index}", index);
+                // Fallback to add if insert fails
+                SafeAddMessage(message);
+            }
+        }
+
+        // Clear messages safely
+        private void SafeClearMessages()
+        {
+            try
+            {
+                _messageStorage.Clear();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error clearing message collection");
+            }
+        }
+
         private void ResetViewModelState()
         {
             _initializationTask = null; // Reset the task reference
             _isInitialized = false;
             CurrentChat = null;
-            Messages.Clear();
+            SafeClearMessages();
             NewMessageText = string.Empty;
             IsLoadingMessages = false;
+            IsLoadingMoreMessages = false;
             IsSendingMessage = false;
             IsTyping = false;
             TypingIndicatorText = string.Empty;
@@ -499,7 +546,7 @@ namespace Solvix.Client.MVVM.ViewModels
                 _logger.LogInformation("Initializing chat page for ChatId {ActualChatId}", ActualChatId);
 
                 IsLoadingMessages = true;
-                Messages.Clear();
+                SafeClearMessages();
                 CanLoadMore = true;
                 _currentUserId = await _authService.GetUserIdAsync();
 
@@ -526,7 +573,7 @@ namespace Solvix.Client.MVVM.ViewModels
                     {
                         msg.IsOwnMessage = msg.SenderId == _currentUserId;
                         SetMessageStatusFromData(msg);
-                        Messages.Add(msg);
+                        SafeAddMessage(msg);
                     }
                     _logger.LogInformation("Loaded {Count} initial messages for Chat {ActualChatId}", initialMessages.Count, ActualChatId);
                     CanLoadMore = initialMessages.Count >= 30;
@@ -538,7 +585,6 @@ namespace Solvix.Client.MVVM.ViewModels
 
                 _isInitialized = true;
                 _logger.LogInformation("Chat {ActualChatId} initialized successfully.", ActualChatId);
-                ScrollToBottom();
 
                 // علامت‌گذاری پیام‌های قابل مشاهده به عنوان خوانده‌شده
                 await MarkAllVisibleAsReadAsync();
@@ -577,7 +623,7 @@ namespace Solvix.Client.MVVM.ViewModels
         // Update based on API response (if SignalR fails or is not used)
         private void UpdateSentMessageStatusFromApi(MessageModel optimisticMessage, MessageModel? serverMessage)
         {
-            var messageToUpdate = Messages.FirstOrDefault(m => m.CorrelationId == optimisticMessage.CorrelationId);
+            var messageToUpdate = _messageStorage.FirstOrDefault(m => m.CorrelationId == optimisticMessage.CorrelationId);
             if (messageToUpdate != null)
             {
                 if (serverMessage != null && serverMessage.Id > 0)
@@ -607,7 +653,7 @@ namespace Solvix.Client.MVVM.ViewModels
 
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
-                var messageToUpdate = Messages.FirstOrDefault(m => m.CorrelationId == optimisticMessage.CorrelationId);
+                var messageToUpdate = _messageStorage.FirstOrDefault(m => m.CorrelationId == optimisticMessage.CorrelationId);
                 if (messageToUpdate != null)
                 {
                     messageToUpdate.Status = Constants.MessageStatus.Failed;
@@ -657,7 +703,7 @@ namespace Solvix.Client.MVVM.ViewModels
                 }
 
                 // Update local UI state optimistically
-                var messageInList = Messages.FirstOrDefault(m => m.Id == messageId);
+                var messageInList = _messageStorage.FirstOrDefault(m => m.Id == messageId);
                 if (messageInList != null && !messageInList.IsRead)
                 {
                     await MainThread.InvokeOnMainThreadAsync(() =>
@@ -697,18 +743,47 @@ namespace Solvix.Client.MVVM.ViewModels
             }
         }
 
-        private void ScrollToBottom()
-        {
-            // Implementation would ideally use a reference to the CollectionView
-            // For now we just log since we don't have a direct reference to the UI
-            _logger.LogTrace("ScrollToBottom requested (implementation needed in View or using messaging)");
-        }
-
         private async void ProcessPendingMessages()
         {
             // Implementation to resend messages queued while offline
             _logger.LogInformation("Processing any pending messages for chat {ChatId}", ActualChatId);
-            // Would typically check for unsent messages and attempt to resend them
+
+            // Find any messages in sending state
+            var pendingMessages = _messageStorage
+                .Where(m => m.IsOwnMessage && m.Status == Constants.MessageStatus.Sending)
+                .ToList();
+
+            if (!pendingMessages.Any()) return;
+
+            _logger.LogInformation("Found {Count} pending messages to process", pendingMessages.Count);
+
+            foreach (var message in pendingMessages)
+            {
+                try
+                {
+                    // Try to send via SignalR first
+                    bool sent = await _signalRService.SendMessageAsync(message);
+                    if (!sent)
+                    {
+                        // If SignalR fails, try API
+                        var sentMessage = await _chatService.SendMessageAsync(ActualChatId, message.Content);
+                        if (sentMessage != null)
+                        {
+                            await MainThread.InvokeOnMainThreadAsync(() =>
+                            {
+                                message.Id = sentMessage.Id;
+                                message.Status = Constants.MessageStatus.Sent;
+                                message.SentAt = sentMessage.SentAt;
+                            });
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to process pending message: {MessageId}", message.Id);
+                    message.Status = Constants.MessageStatus.Failed;
+                }
+            }
         }
 
         #endregion
