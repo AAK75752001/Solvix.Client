@@ -4,10 +4,12 @@ using Microsoft.Extensions.Logging;
 using Solvix.Client.Core.Interfaces;
 using Solvix.Client.Core.Models;
 using Solvix.Client.MVVM.Views;
+using System; // اطمینان از وجود using برای Guid, Exception, DateTime
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Threading.Tasks;
 using System.Threading; // Required for CancellationTokenSource
+using System.Threading.Tasks;
+
 
 namespace Solvix.Client.MVVM.ViewModels
 {
@@ -122,6 +124,7 @@ namespace Solvix.Client.MVVM.ViewModels
         private async Task OnSearchQueryChanged()
         {
             _searchDebounceCts?.Cancel();
+            _searchDebounceCts?.Dispose();
             _searchDebounceCts = new CancellationTokenSource();
             CancellationToken token = _searchDebounceCts.Token;
 
@@ -140,7 +143,7 @@ namespace Solvix.Client.MVVM.ViewModels
 
         private async Task ApplyFilterAsync()
         {
-            if (IsLoading && string.IsNullOrWhiteSpace(SearchQuery)) return;
+            if (IsLoading && string.IsNullOrWhiteSpace(SearchQuery) && !_hasPerformedSearch) return;
 
             IsLoading = true;
 
@@ -159,7 +162,6 @@ namespace Solvix.Client.MVVM.ViewModels
                     var usersFromServer = await _userService.SearchUsersAsync(SearchQuery);
                     if (usersFromServer != null)
                     {
-                        // سرور باید کاربر فعلی را فیلتر کند، اما برای اطمینان مجدد فیلتر می‌کنیم
                         FilteredUsers = new ObservableCollection<UserModel>(usersFromServer.Where(u => u.Id != _currentUserId));
                         _logger.LogInformation("{Count} کاربر با جستجوی \"{Query}\" یافت شد", FilteredUsers.Count, SearchQuery);
                     }
@@ -190,6 +192,8 @@ namespace Solvix.Client.MVVM.ViewModels
         private async Task StartChatAsync(UserModel user)
         {
             if (user == null) return;
+            if (_currentUserId == 0) await InitializeAsync();
+
             if (user.Id == _currentUserId)
             {
                 await _toastService.ShowToastAsync("امکان شروع چت با خودتان وجود ندارد.", ToastType.Warning);
