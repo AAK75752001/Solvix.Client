@@ -81,6 +81,9 @@ namespace Solvix.Client
             services.AddTransient<LoginViewModel>();
             services.AddTransient<ChatListViewModel>();
             services.AddTransient<ChatPageViewModel>();
+            services.AddTransient<SettingsViewModel>();
+            services.AddTransient<NewChatViewModel>();
+
 
             // Main view models
 
@@ -92,6 +95,9 @@ namespace Solvix.Client
             services.AddTransient<LoginPage>();
             services.AddTransient<ChatListPage>();
             services.AddTransient<ChatPage>();
+            services.AddTransient<SettingsPage>();
+            services.AddTransient<NewChatPage>();
+
 
             // Main views
 

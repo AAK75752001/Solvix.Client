@@ -40,6 +40,8 @@
             public static string Username = "username";
             public static string PhoneNumber = "phone_number";
             public static string Theme = "app_theme";
+            public static string Notifications = "notifications_enabled";
+            public static string TwoFactorAuth = "two_factor_auth";
         }
 
         // Message Status

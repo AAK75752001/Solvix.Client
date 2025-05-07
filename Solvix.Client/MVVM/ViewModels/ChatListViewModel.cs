@@ -326,15 +326,31 @@ namespace Solvix.Client.MVVM.ViewModels
         [RelayCommand]
         private async Task NewChatAsync()
         {
-            _logger.LogInformation("New Chat command executed.");
-            await _toastService.ShowToastAsync("شروع چت جدید (به زودی!)", ToastType.Info);
+            _logger.LogInformation("درخواست شروع چت جدید");
+            try
+            {
+                await Shell.Current.GoToAsync(nameof(NewChatPage));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "خطا در ناوبری به صفحه چت جدید");
+                await _toastService.ShowToastAsync("خطا در باز کردن صفحه چت جدید", ToastType.Error);
+            }
         }
 
         [RelayCommand]
         private async Task GoToSettingsAsync()
         {
-            _logger.LogInformation("Go To Settings command executed.");
-            await _toastService.ShowToastAsync("رفتن به تنظیمات (به زودی!)", ToastType.Info);
+            _logger.LogInformation("درخواست رفتن به صفحه تنظیمات");
+            try
+            {
+                await Shell.Current.GoToAsync(nameof(SettingsPage));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "خطا در ناوبری به صفحه تنظیمات");
+                await _toastService.ShowToastAsync("خطا در بازکردن صفحه تنظیمات", ToastType.Error);
+            }
         }
 
         public async Task OnAppearingAsync()

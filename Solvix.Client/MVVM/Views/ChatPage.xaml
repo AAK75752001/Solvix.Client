@@ -14,6 +14,7 @@
             <converters:IsOwnMessageToAlignmentConverter x:Key="MessageAlignmentConverter"/>
             <converters:MessageStatusToIconConverter x:Key="StatusIconConverter"/>
             <converters:MessageStatusToOpacityConverter x:Key="StatusOpacityConverter"/>
+            <converters:TextDirectionConverter x:Key="TextDirectionConverter"/>
             <toolkit:IntToBoolConverter x:Key="IntToBoolConverter"/>
             <toolkit:InvertedBoolConverter x:Key="InverseBoolConverter" />
             <converters:BoolToColorConverter x:Key="StatusColorConverter"/>
@@ -64,8 +65,9 @@
             <!-- Header Styles -->
             <Style x:Key="ChatHeaderStyle" TargetType="Grid">
                 <Setter Property="BackgroundColor" Value="{DynamicResource CardBackgroundColor}"/>
-                <Setter Property="Padding" Value="8,6"/>
+                <Setter Property="Padding" Value="8,10"/>
                 <Setter Property="ColumnSpacing" Value="8"/>
+                <Setter Property="HeightRequest" Value="60"/>
             </Style>
             <Style x:Key="ProfileCircleStyle" TargetType="Border">
                 <Setter Property="WidthRequest" Value="40"/>
@@ -74,7 +76,7 @@
                 <Setter Property="StrokeShape">
                     <RoundRectangle CornerRadius="20"/>
                 </Setter>
-                <Setter Property="HorizontalOptions" Value="End"/>
+                <Setter Property="HorizontalOptions" Value="Center"/>
                 <Setter Property="VerticalOptions" Value="Center"/>
             </Style>
             <Style x:Key="InitialsLabelStyle" TargetType="Label">
@@ -108,25 +110,31 @@
                 <Setter Property="VerticalOptions" Value="Center"/>
                 <Setter Property="Margin" Value="0,0,5,0"/>
             </Style>
+
+            <!-- Back Button Style -->
+            <Style x:Key="BackButtonStyle" TargetType="Button">
+                <Setter Property="FontFamily" Value="MaterialIcons"/>
+                <Setter Property="FontSize" Value="24"/>
+                <Setter Property="BackgroundColor" Value="Transparent"/>
+                <Setter Property="TextColor" Value="{DynamicResource PrimaryTextColor}"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="HeightRequest" Value="40"/>
+                <Setter Property="WidthRequest" Value="40"/>
+                <Setter Property="HorizontalOptions" Value="Start"/>
+                <Setter Property="VerticalOptions" Value="Center"/>
+                <Setter Property="Margin" Value="5,0,0,0"/>
+            </Style>
         </ResourceDictionary>
     </ContentPage.Resources>
 
     <Grid RowDefinitions="Auto, *, Auto, Auto" ColumnDefinitions="*" BackgroundColor="{DynamicResource PageBackgroundColor}">
 
-        <!-- Chat Header - Fixed header with centered text -->
-        <Grid Grid.Row="0" Style="{StaticResource ChatHeaderStyle}" ColumnDefinitions="40,*,40">
-            <Button Grid.Column="0"
+        <!-- Chat Header - Fixed header similar to Telegram -->
+        <Grid Grid.Row="0" Style="{StaticResource ChatHeaderStyle}" ColumnDefinitions="Auto,*,Auto">
+            <Button Grid.Column="0" 
                     Text="arrow_back"
-                    FontFamily="MaterialIcons"
-                    FontSize="24"
-                    BackgroundColor="Transparent"
-                    TextColor="{DynamicResource PrimaryTextColor}"
                     Command="{Binding GoBackCommand}"
-                    Padding="0"
-                    HeightRequest="40"
-                    WidthRequest="40"
-                    HorizontalOptions="Start"
-                    VerticalOptions="Center"/>
+                    Style="{StaticResource BackButtonStyle}"/>
 
             <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center" HorizontalOptions="Center">
                 <Label Text="{Binding CurrentChat.OtherParticipant.DisplayName}"
@@ -155,8 +163,8 @@
                 </Label>
             </VerticalStackLayout>
 
-            <!-- Fixed profile avatar -->
-            <Grid Grid.Column="2" HeightRequest="40" WidthRequest="40" HorizontalOptions="End">
+            <!-- User Avatar with status indicator -->
+            <Grid Grid.Column="2" HeightRequest="40" WidthRequest="40" HorizontalOptions="End" Margin="0,0,10,0">
                 <Border Style="{StaticResource ProfileCircleStyle}">
                     <Label Text="{Binding CurrentChat.OtherParticipant.Initials}"
                            Style="{StaticResource InitialsLabelStyle}"/>
@@ -170,6 +178,10 @@
                         HorizontalOptions="End"
                         VerticalOptions="End"/>
             </Grid>
+
+            <!-- Border for bottom shadow effect -->
+            <BoxView Grid.ColumnSpan="3" HeightRequest="1" VerticalOptions="End" 
+                     BackgroundColor="{DynamicResource FrameBorderColor}" Opacity="0.5"/>
         </Grid>
 
         <!-- Chat Messages with Scroll Detection -->
@@ -219,7 +231,8 @@
                                     <Label Text="{Binding Content}"
                                            TextColor="{StaticResource ReceivedMessageTextColor}"
                                            FontSize="15"
-                                           LineBreakMode="WordWrap" />
+                                           LineBreakMode="WordWrap" 
+                                           FlowDirection="{Binding Content, Converter={StaticResource TextDirectionConverter}}"/>
                                     <Label Text="{Binding LocalSentAt, StringFormat='{0:HH:mm}'}"
                                            TextColor="{DynamicResource TertiaryTextColor}"
                                            Opacity="0.7"
@@ -246,7 +259,8 @@
                                     <Label Text="{Binding Content}"
                                            TextColor="{StaticResource SentMessageTextColor}"
                                            FontSize="15"
-                                           LineBreakMode="WordWrap" />
+                                           LineBreakMode="WordWrap" 
+                                           FlowDirection="{Binding Content, Converter={StaticResource TextDirectionConverter}}"/>
                                     <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="4" HorizontalOptions="End">
                                         <Label Grid.Column="0" 
                                                Text="{Binding LocalSentAt, StringFormat='{0:HH:mm}'}"
@@ -300,7 +314,12 @@
         <Border Grid.Row="3" Style="{StaticResource ChatInputBorderStyle}" Margin="8">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="5">
                 <Button Grid.Column="0" Text="attach_file" Command="{Binding AttachFileCommand}" Style="{StaticResource ChatInputButtonStyle}"/>
-                <Editor x:Name="MessageEditor" Grid.Column="1" Text="{Binding NewMessageText, Mode=TwoWay}" Style="{StaticResource ChatInputEditorStyle}" IsEnabled="{Binding IsSendingMessage, Converter={StaticResource InverseBoolConverter}}"/>
+                <Editor x:Name="MessageEditor" 
+                        Grid.Column="1" 
+                        Text="{Binding NewMessageText, Mode=TwoWay}" 
+                        Style="{StaticResource ChatInputEditorStyle}" 
+                        IsEnabled="{Binding IsSendingMessage, Converter={StaticResource InverseBoolConverter}}"
+                        FlowDirection="{Binding NewMessageText, Converter={StaticResource TextDirectionConverter}}"/>
                 <Button Grid.Column="2" Text="sentiment_satisfied" Command="{Binding EmojiCommand}" Style="{StaticResource ChatInputButtonStyle}"/>
                 <Button Grid.Column="3" Command="{Binding SendMessageCommand}" Style="{StaticResource SendButtonStyle}">
                     <Button.ImageSource>

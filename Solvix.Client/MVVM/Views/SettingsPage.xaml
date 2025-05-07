@@ -1,0 +1,438 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:Solvix.Client.MVVM.ViewModels"
+             xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+             xmlns:converters="clr-namespace:Solvix.Client.Core.Converters"
+             x:Class="Solvix.Client.MVVM.Views.SettingsPage"
+             x:DataType="vm:SettingsViewModel"
+             Title="تنظیمات"
+             BackgroundColor="{DynamicResource PageBackgroundColor}">
+
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <toolkit:InvertedBoolConverter x:Key="InverseBoolConverter" />
+            <converters:BoolToColorConverter x:Key="StatusColorConverter" />
+
+            <!-- Styles for settings page -->
+            <Style x:Key="HeaderStyle" TargetType="Grid">
+                <Setter Property="BackgroundColor" Value="{DynamicResource CardBackgroundColor}"/>
+                <Setter Property="Padding" Value="16,12"/>
+                <Setter Property="HeightRequest" Value="70"/>
+            </Style>
+
+            <Style x:Key="SectionHeaderStyle" TargetType="Label">
+                <Setter Property="TextColor" Value="{DynamicResource TertiaryTextColor}"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="Margin" Value="16,16,16,8"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+            </Style>
+
+            <Style x:Key="SettingCardStyle" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="{DynamicResource CardBackgroundColor}"/>
+                <Setter Property="StrokeThickness" Value="0"/>
+                <Setter Property="Margin" Value="0,2"/>
+                <Setter Property="Padding" Value="0"/>
+            </Style>
+
+            <Style x:Key="SettingItemStyle" TargetType="Grid">
+                <Setter Property="Padding" Value="16,12"/>
+                <Setter Property="ColumnSpacing" Value="16"/>
+                <Setter Property="RowSpacing" Value="4"/>
+            </Style>
+
+            <Style x:Key="SettingIconStyle" TargetType="Label">
+                <Setter Property="FontFamily" Value="MaterialIcons"/>
+                <Setter Property="FontSize" Value="24"/>
+                <Setter Property="VerticalOptions" Value="Center"/>
+                <Setter Property="HorizontalOptions" Value="Center"/>
+                <Setter Property="Margin" Value="0"/>
+            </Style>
+
+            <Style x:Key="SettingTitleStyle" TargetType="Label">
+                <Setter Property="TextColor" Value="{DynamicResource PrimaryTextColor}"/>
+                <Setter Property="FontSize" Value="16"/>
+                <Setter Property="VerticalOptions" Value="Center"/>
+            </Style>
+
+            <Style x:Key="SettingDescriptionStyle" TargetType="Label">
+                <Setter Property="TextColor" Value="{DynamicResource TertiaryTextColor}"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="LineBreakMode" Value="TailTruncation"/>
+                <Setter Property="MaxLines" Value="2"/>
+            </Style>
+
+            <Style x:Key="ProfileCircleStyle" TargetType="Border">
+                <Setter Property="WidthRequest" Value="70"/>
+                <Setter Property="HeightRequest" Value="70"/>
+                <Setter Property="BackgroundColor" Value="{DynamicResource TertiaryColor}"/>
+                <Setter Property="StrokeShape">
+                    <RoundRectangle CornerRadius="35"/>
+                </Setter>
+                <Setter Property="HorizontalOptions" Value="Center"/>
+                <Setter Property="VerticalOptions" Value="Center"/>
+            </Style>
+
+            <Style x:Key="InitialsLabelStyle" TargetType="Label">
+                <Setter Property="TextColor" Value="{DynamicResource InverseTextColor}"/>
+                <Setter Property="FontSize" Value="28"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+                <Setter Property="HorizontalOptions" Value="Center"/>
+                <Setter Property="VerticalOptions" Value="Center"/>
+                <Setter Property="HorizontalTextAlignment" Value="Center"/>
+                <Setter Property="VerticalTextAlignment" Value="Center"/>
+            </Style>
+
+            <Style x:Key="UserNameStyle" TargetType="Label">
+                <Setter Property="TextColor" Value="{DynamicResource PrimaryTextColor}"/>
+                <Setter Property="FontSize" Value="20"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+                <Setter Property="HorizontalOptions" Value="Center"/>
+                <Setter Property="HorizontalTextAlignment" Value="Center"/>
+                <Setter Property="Margin" Value="0,8,0,0"/>
+            </Style>
+
+            <Style x:Key="UserPhoneStyle" TargetType="Label">
+                <Setter Property="TextColor" Value="{DynamicResource SecondaryTextColor}"/>
+                <Setter Property="FontSize" Value="14"/>
+                <Setter Property="HorizontalOptions" Value="Center"/>
+                <Setter Property="HorizontalTextAlignment" Value="Center"/>
+                <Setter Property="Margin" Value="0,2,0,0"/>
+            </Style>
+
+            <Style x:Key="DividerStyle" TargetType="BoxView">
+                <Setter Property="HeightRequest" Value="1"/>
+                <Setter Property="BackgroundColor" Value="{DynamicResource SeparatorColor}"/>
+                <Setter Property="Margin" Value="16,0"/>
+                <Setter Property="Opacity" Value="0.6"/>
+            </Style>
+
+            <Style x:Key="ThemeRoundButtonStyle" TargetType="RadioButton">
+                <Setter Property="ControlTemplate">
+                    <ControlTemplate>
+                        <Border WidthRequest="32" 
+                                HeightRequest="32" 
+                                HorizontalOptions="Center"
+                                StrokeThickness="0"
+                                BackgroundColor="{TemplateBinding BackgroundColor}"
+                                StrokeShape="RoundRectangle 16">
+                            <Border WidthRequest="28" 
+                                    HeightRequest="28" 
+                                    StrokeThickness="0"
+                                    BackgroundColor="Transparent"
+                                    StrokeShape="RoundRectangle 14"
+                                    IsVisible="{TemplateBinding IsChecked}">
+                                <Label Text="check" 
+                                       FontFamily="MaterialIcons"
+                                       TextColor="White" 
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center"/>
+                            </Border>
+                        </Border>
+                    </ControlTemplate>
+                </Setter>
+            </Style>
+        </ResourceDictionary>
+    </ContentPage.Resources>
+
+    <Grid RowDefinitions="Auto,*">
+        <!-- Header with user info -->
+        <Border Grid.Row="0" 
+                BackgroundColor="{DynamicResource CardBackgroundColor}" 
+                Padding="0" 
+                Margin="0">
+            <Grid RowDefinitions="Auto,Auto" 
+                  ColumnDefinitions="*,Auto,*" 
+                  Padding="16">
+                <Border Grid.Row="0" 
+                        Grid.Column="1" 
+                        Style="{StaticResource ProfileCircleStyle}">
+                    <Label Text="{Binding CurrentUser.Initials}" 
+                           Style="{StaticResource InitialsLabelStyle}"/>
+                </Border>
+
+                <Label Grid.Row="1" 
+                       Grid.Column="0" 
+                       Grid.ColumnSpan="3" 
+                       Text="{Binding CurrentUser.DisplayName}" 
+                       Style="{StaticResource UserNameStyle}"/>
+
+                <Label Grid.Row="2" 
+                       Grid.Column="0" 
+                       Grid.ColumnSpan="3" 
+                       Text="{Binding CurrentUser.PhoneNumber}" 
+                       Style="{StaticResource UserPhoneStyle}"/>
+            </Grid>
+        </Border>
+
+        <!-- Settings sections -->
+        <ScrollView Grid.Row="1">
+            <VerticalStackLayout Spacing="0">
+
+                <!-- Account section -->
+                <Label Text="حساب کاربری" Style="{StaticResource SectionHeaderStyle}"/>
+                <Border Style="{StaticResource SettingCardStyle}">
+                    <VerticalStackLayout Spacing="0">
+                        <!-- Profile Info -->
+                        <Grid Style="{StaticResource SettingItemStyle}" ColumnDefinitions="Auto,*,Auto">
+                            <Label Grid.Column="0" Text="person" TextColor="#4CAF50" Style="{StaticResource SettingIconStyle}"/>
+                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                <Label Text="اطلاعات پروفایل" Style="{StaticResource SettingTitleStyle}"/>
+                                <Label Text="تغییر نام، نام خانوادگی و مشخصات نمایه" Style="{StaticResource SettingDescriptionStyle}"/>
+                            </VerticalStackLayout>
+                            <Label Grid.Column="2" Text="chevron_right" Style="{StaticResource SettingIconStyle}" TextColor="{DynamicResource TertiaryTextColor}"/>
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding EditProfileCommand}"/>
+                            </Grid.GestureRecognizers>
+                        </Grid>
+
+                        <BoxView Style="{StaticResource DividerStyle}"/>
+
+                        <!-- Phone Number -->
+                        <Grid Style="{StaticResource SettingItemStyle}" ColumnDefinitions="Auto,*,Auto">
+                            <Label Grid.Column="0" Text="phone" TextColor="#2196F3" Style="{StaticResource SettingIconStyle}"/>
+                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                <Label Text="شماره تلفن" Style="{StaticResource SettingTitleStyle}"/>
+                                <Label Text="تغییر یا به‌روزرسانی شماره تلفن همراه" Style="{StaticResource SettingDescriptionStyle}"/>
+                            </VerticalStackLayout>
+                            <Label Grid.Column="2" Text="chevron_right" Style="{StaticResource SettingIconStyle}" TextColor="{DynamicResource TertiaryTextColor}"/>
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ChangePhoneCommand}"/>
+                            </Grid.GestureRecognizers>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Security section -->
+                <Label Text="امنیت" Style="{StaticResource SectionHeaderStyle}"/>
+                <Border Style="{StaticResource SettingCardStyle}">
+                    <VerticalStackLayout Spacing="0">
+                        <!-- Password -->
+                        <Grid Style="{StaticResource SettingItemStyle}" ColumnDefinitions="Auto,*,Auto">
+                            <Label Grid.Column="0" Text="lock" TextColor="#FFC107" Style="{StaticResource SettingIconStyle}"/>
+                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                <Label Text="رمز عبور" Style="{StaticResource SettingTitleStyle}"/>
+                                <Label Text="تغییر رمز عبور حساب کاربری" Style="{StaticResource SettingDescriptionStyle}"/>
+                            </VerticalStackLayout>
+                            <Label Grid.Column="2" Text="chevron_right" Style="{StaticResource SettingIconStyle}" TextColor="{DynamicResource TertiaryTextColor}"/>
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ChangePasswordCommand}"/>
+                            </Grid.GestureRecognizers>
+                        </Grid>
+
+                        <BoxView Style="{StaticResource DividerStyle}"/>
+
+                        <!-- Two-Factor Authentication -->
+                        <Grid Style="{StaticResource SettingItemStyle}" ColumnDefinitions="Auto,*,Auto">
+                            <Label Grid.Column="0" Text="security" TextColor="#FF5722" Style="{StaticResource SettingIconStyle}"/>
+                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                <Label Text="احراز هویت دو مرحله‌ای" Style="{StaticResource SettingTitleStyle}"/>
+                                <Label Text="افزایش امنیت حساب با تأیید دو مرحله‌ای" Style="{StaticResource SettingDescriptionStyle}"/>
+                            </VerticalStackLayout>
+                            <Switch Grid.Column="2" IsToggled="{Binding IsTwoFactorEnabled}" OnColor="{DynamicResource PrimaryColor}"/>
+                        </Grid>
+
+                        <BoxView Style="{StaticResource DividerStyle}"/>
+
+                        <!-- Active Sessions -->
+                        <Grid Style="{StaticResource SettingItemStyle}" ColumnDefinitions="Auto,*,Auto">
+                            <Label Grid.Column="0" Text="devices" TextColor="#9C27B0" Style="{StaticResource SettingIconStyle}"/>
+                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                <Label Text="جلسات فعال" Style="{StaticResource SettingTitleStyle}"/>
+                                <Label Text="مدیریت دستگاه‌های متصل به حساب" Style="{StaticResource SettingDescriptionStyle}"/>
+                            </VerticalStackLayout>
+                            <Label Grid.Column="2" Text="chevron_right" Style="{StaticResource SettingIconStyle}" TextColor="{DynamicResource TertiaryTextColor}"/>
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ViewSessionsCommand}"/>
+                            </Grid.GestureRecognizers>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Notifications section -->
+                <Label Text="اعلان‌ها" Style="{StaticResource SectionHeaderStyle}"/>
+                <Border Style="{StaticResource SettingCardStyle}">
+                    <VerticalStackLayout Spacing="0">
+                        <!-- Notifications -->
+                        <Grid Style="{StaticResource SettingItemStyle}" ColumnDefinitions="Auto,*,Auto">
+                            <Label Grid.Column="0" Text="notifications" TextColor="#2196F3" Style="{StaticResource SettingIconStyle}"/>
+                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                <Label Text="اعلان‌های پیام" Style="{StaticResource SettingTitleStyle}"/>
+                                <Label Text="مدیریت اعلان‌های پیام‌های دریافتی" Style="{StaticResource SettingDescriptionStyle}"/>
+                            </VerticalStackLayout>
+                            <Switch Grid.Column="2" IsToggled="{Binding IsNotificationsEnabled}" OnColor="{DynamicResource PrimaryColor}"/>
+                        </Grid>
+
+                        <BoxView Style="{StaticResource DividerStyle}"/>
+
+                        <!-- Sounds -->
+                        <Grid Style="{StaticResource SettingItemStyle}" ColumnDefinitions="Auto,*,Auto">
+                            <Label Grid.Column="0" Text="volume_up" TextColor="#F44336" Style="{StaticResource SettingIconStyle}"/>
+                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                <Label Text="صدا و ویبره" Style="{StaticResource SettingTitleStyle}"/>
+                                <Label Text="تنظیمات صدا و لرزش برای پیام‌ها" Style="{StaticResource SettingDescriptionStyle}"/>
+                            </VerticalStackLayout>
+                            <Label Grid.Column="2" Text="chevron_right" Style="{StaticResource SettingIconStyle}" TextColor="{DynamicResource TertiaryTextColor}"/>
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding SoundSettingsCommand}"/>
+                            </Grid.GestureRecognizers>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Appearance section -->
+                <Label Text="ظاهر برنامه" Style="{StaticResource SectionHeaderStyle}"/>
+                <Border Style="{StaticResource SettingCardStyle}">
+                    <VerticalStackLayout Spacing="0">
+                        <!-- Theme -->
+                        <Grid RowDefinitions="Auto,Auto" Style="{StaticResource SettingItemStyle}">
+                            <Grid ColumnDefinitions="Auto,*" Grid.Row="0">
+                                <Label Grid.Column="0" Text="palette" TextColor="#4CAF50" Style="{StaticResource SettingIconStyle}"/>
+                                <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                    <Label Text="حالت نمایش" Style="{StaticResource SettingTitleStyle}"/>
+                                    <Label Text="انتخاب تم روشن، تیره یا سیستمی" Style="{StaticResource SettingDescriptionStyle}"/>
+                                </VerticalStackLayout>
+                            </Grid>
+
+                            <Grid ColumnDefinitions="*,*,*" Grid.Row="1" Margin="0,16,0,8">
+                                <VerticalStackLayout Grid.Column="0" Spacing="8" HorizontalOptions="Center">
+                                    <RadioButton IsChecked="{Binding LightThemeSelected}" GroupName="Theme" Style="{StaticResource ThemeRoundButtonStyle}" BackgroundColor="White"/>
+                                    <Label Text="روشن" TextColor="{DynamicResource PrimaryTextColor}" HorizontalOptions="Center" FontSize="12"/>
+                                </VerticalStackLayout>
+
+                                <VerticalStackLayout Grid.Column="1" Spacing="8" HorizontalOptions="Center">
+                                    <RadioButton IsChecked="{Binding DarkThemeSelected}" GroupName="Theme" Style="{StaticResource ThemeRoundButtonStyle}" BackgroundColor="#121212"/>
+                                    <Label Text="تیره" TextColor="{DynamicResource PrimaryTextColor}" HorizontalOptions="Center" FontSize="12"/>
+                                </VerticalStackLayout>
+
+                                <VerticalStackLayout Grid.Column="2" Spacing="8" HorizontalOptions="Center">
+                                    <RadioButton IsChecked="{Binding SystemThemeSelected}" GroupName="Theme" Style="{StaticResource ThemeRoundButtonStyle}" BackgroundColor="#673AB7"/>
+                                    <Label Text="سیستمی" TextColor="{DynamicResource PrimaryTextColor}" HorizontalOptions="Center" FontSize="12"/>
+                                </VerticalStackLayout>
+                            </Grid>
+                        </Grid>
+
+                        <BoxView Style="{StaticResource DividerStyle}"/>
+
+                        <!-- Font Size -->
+                        <Grid Style="{StaticResource SettingItemStyle}" ColumnDefinitions="Auto,*,Auto">
+                            <Label Grid.Column="0" Text="text_format" TextColor="#3F51B5" Style="{StaticResource SettingIconStyle}"/>
+                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                <Label Text="اندازه متن" Style="{StaticResource SettingTitleStyle}"/>
+                                <Label Text="تنظیم اندازه متن پیام‌ها و منوها" Style="{StaticResource SettingDescriptionStyle}"/>
+                            </VerticalStackLayout>
+                            <Label Grid.Column="2" Text="chevron_right" Style="{StaticResource SettingIconStyle}" TextColor="{DynamicResource TertiaryTextColor}"/>
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding FontSizeSettingsCommand}"/>
+                            </Grid.GestureRecognizers>
+                        </Grid>
+
+                        <BoxView Style="{StaticResource DividerStyle}"/>
+
+                        <!-- Background -->
+                        <Grid Style="{StaticResource SettingItemStyle}" ColumnDefinitions="Auto,*,Auto">
+                            <Label Grid.Column="0" Text="wallpaper" TextColor="#009688" Style="{StaticResource SettingIconStyle}"/>
+                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                <Label Text="پس‌زمینه چت" Style="{StaticResource SettingTitleStyle}"/>
+                                <Label Text="انتخاب پس‌زمینه دلخواه برای صفحه گفتگو" Style="{StaticResource SettingDescriptionStyle}"/>
+                            </VerticalStackLayout>
+                            <Label Grid.Column="2" Text="chevron_right" Style="{StaticResource SettingIconStyle}" TextColor="{DynamicResource TertiaryTextColor}"/>
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ChatBackgroundCommand}"/>
+                            </Grid.GestureRecognizers>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Privacy section -->
+                <Label Text="حریم خصوصی" Style="{StaticResource SectionHeaderStyle}"/>
+                <Border Style="{StaticResource SettingCardStyle}">
+                    <VerticalStackLayout Spacing="0">
+                        <!-- Last Seen -->
+                        <Grid Style="{StaticResource SettingItemStyle}" ColumnDefinitions="Auto,*,Auto">
+                            <Label Grid.Column="0" Text="visibility" TextColor="#673AB7" Style="{StaticResource SettingIconStyle}"/>
+                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                <Label Text="آخرین بازدید و وضعیت آنلاین" Style="{StaticResource SettingTitleStyle}"/>
+                                <Label Text="چه کسانی می‌توانند زمان آخرین بازدید شما را ببینند" Style="{StaticResource SettingDescriptionStyle}"/>
+                            </VerticalStackLayout>
+                            <Label Grid.Column="2" Text="chevron_right" Style="{StaticResource SettingIconStyle}" TextColor="{DynamicResource TertiaryTextColor}"/>
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding LastSeenSettingsCommand}"/>
+                            </Grid.GestureRecognizers>
+                        </Grid>
+
+                        <BoxView Style="{StaticResource DividerStyle}"/>
+
+                        <!-- Blocked Users -->
+                        <Grid Style="{StaticResource SettingItemStyle}" ColumnDefinitions="Auto,*,Auto">
+                            <Label Grid.Column="0" Text="block" TextColor="#F44336" Style="{StaticResource SettingIconStyle}"/>
+                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                <Label Text="کاربران مسدود شده" Style="{StaticResource SettingTitleStyle}"/>
+                                <Label Text="مدیریت لیست کاربران مسدود شده" Style="{StaticResource SettingDescriptionStyle}"/>
+                            </VerticalStackLayout>
+                            <Label Grid.Column="2" Text="chevron_right" Style="{StaticResource SettingIconStyle}" TextColor="{DynamicResource TertiaryTextColor}"/>
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding BlockedUsersCommand}"/>
+                            </Grid.GestureRecognizers>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Other section -->
+                <Label Text="سایر" Style="{StaticResource SectionHeaderStyle}"/>
+                <Border Style="{StaticResource SettingCardStyle}">
+                    <VerticalStackLayout Spacing="0">
+                        <!-- About -->
+                        <Grid Style="{StaticResource SettingItemStyle}" ColumnDefinitions="Auto,*,Auto">
+                            <Label Grid.Column="0" Text="info" TextColor="#2196F3" Style="{StaticResource SettingIconStyle}"/>
+                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                <Label Text="درباره سالویکس" Style="{StaticResource SettingTitleStyle}"/>
+                                <Label Text="اطلاعات برنامه، نسخه و سازندگان" Style="{StaticResource SettingDescriptionStyle}"/>
+                            </VerticalStackLayout>
+                            <Label Grid.Column="2" Text="chevron_right" Style="{StaticResource SettingIconStyle}" TextColor="{DynamicResource TertiaryTextColor}"/>
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding AboutCommand}"/>
+                            </Grid.GestureRecognizers>
+                        </Grid>
+
+                        <BoxView Style="{StaticResource DividerStyle}"/>
+
+                        <!-- Help -->
+                        <Grid Style="{StaticResource SettingItemStyle}" ColumnDefinitions="Auto,*,Auto">
+                            <Label Grid.Column="0" Text="help" TextColor="#8BC34A" Style="{StaticResource SettingIconStyle}"/>
+                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                <Label Text="راهنما و پشتیبانی" Style="{StaticResource SettingTitleStyle}"/>
+                                <Label Text="سوالات متداول و تماس با پشتیبانی" Style="{StaticResource SettingDescriptionStyle}"/>
+                            </VerticalStackLayout>
+                            <Label Grid.Column="2" Text="chevron_right" Style="{StaticResource SettingIconStyle}" TextColor="{DynamicResource TertiaryTextColor}"/>
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding HelpCommand}"/>
+                            </Grid.GestureRecognizers>
+                        </Grid>
+
+                        <BoxView Style="{StaticResource DividerStyle}"/>
+
+                        <!-- Logout -->
+                        <Grid Style="{StaticResource SettingItemStyle}" ColumnDefinitions="Auto,*,Auto">
+                            <Label Grid.Column="0" Text="logout" TextColor="#F44336" Style="{StaticResource SettingIconStyle}"/>
+                            <VerticalStackLayout Grid.Column="1" Spacing="2">
+                                <Label Text="خروج از حساب کاربری" Style="{StaticResource SettingTitleStyle}"/>
+                                <Label Text="خروج از حساب و بازگشت به صفحه ورود" Style="{StaticResource SettingDescriptionStyle}"/>
+                            </VerticalStackLayout>
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding LogoutCommand}"/>
+                            </Grid.GestureRecognizers>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Version info -->
+                <Label Text="{Binding AppVersionInfo}" 
+                       TextColor="{DynamicResource TertiaryTextColor}" 
+                       FontSize="12" 
+                       HorizontalOptions="Center"
+                       Margin="0,24,0,24"/>
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
+</ContentPage>

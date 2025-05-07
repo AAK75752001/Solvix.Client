@@ -10,7 +10,9 @@ namespace Solvix.Client
             Routing.RegisterRoute(nameof(LoginPage), typeof(LoginPage));
             Routing.RegisterRoute(nameof(ChatListPage), typeof(ChatListPage));
             Routing.RegisterRoute(nameof(ChatPage), typeof(ChatPage));
-            // Routing.RegisterRoute(nameof(SettingsPage), typeof(SettingsPage)); // TODO: وقتی ساخته شد
+            Routing.RegisterRoute(nameof(SettingsPage), typeof(SettingsPage));
+            Routing.RegisterRoute(nameof(NewChatPage), typeof(NewChatPage));
+
 
 
             CurrentItem = new ShellContent

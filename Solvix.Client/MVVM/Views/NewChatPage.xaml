@@ -1,0 +1,185 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:Solvix.Client.MVVM.ViewModels"
+             xmlns:model="clr-namespace:Solvix.Client.Core.Models"
+             xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
+             xmlns:converters="clr-namespace:Solvix.Client.Core.Converters"
+             x:Class="Solvix.Client.MVVM.Views.NewChatPage"
+             x:DataType="vm:NewChatViewModel"
+             Title="چت جدید"
+             BackgroundColor="{DynamicResource PageBackgroundColor}">
+
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <!-- تبدیل کننده‌ها -->
+            <toolkit:InvertedBoolConverter x:Key="InverseBoolConverter" />
+            <toolkit:IntToBoolConverter x:Key="IntToBoolConverter"/>
+            <converters:BoolToColorConverter x:Key="OnlineStatusColorConverter" />
+
+            <!-- استایل‌ها -->
+            <Style x:Key="HeaderStyle" TargetType="Grid">
+                <Setter Property="BackgroundColor" Value="{DynamicResource CardBackgroundColor}"/>
+                <Setter Property="Padding" Value="16,12"/>
+                <Setter Property="HeightRequest" Value="70"/>
+            </Style>
+
+            <Style x:Key="InitialsCircleStyle" TargetType="Border">
+                <Setter Property="HeightRequest" Value="50"/>
+                <Setter Property="WidthRequest" Value="50"/>
+                <Setter Property="BackgroundColor" Value="{DynamicResource TertiaryColor}"/>
+                <Setter Property="StrokeShape">
+                    <RoundRectangle CornerRadius="25"/>
+                </Setter>
+                <Setter Property="HorizontalOptions" Value="Center"/>
+                <Setter Property="VerticalOptions" Value="Center"/>
+            </Style>
+
+            <Style x:Key="InitialsLabelStyle" TargetType="Label">
+                <Setter Property="TextColor" Value="{DynamicResource InverseTextColor}"/>
+                <Setter Property="FontSize" Value="18"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+                <Setter Property="HorizontalOptions" Value="Center"/>
+                <Setter Property="VerticalOptions" Value="Center"/>
+                <Setter Property="HorizontalTextAlignment" Value="Center"/>
+                <Setter Property="VerticalTextAlignment" Value="Center"/>
+            </Style>
+
+            <Style x:Key="UserItemStyle" TargetType="Grid">
+                <Setter Property="Padding" Value="16,12"/>
+                <Setter Property="ColumnSpacing" Value="16"/>
+                <Setter Property="RowSpacing" Value="4"/>
+            </Style>
+
+            <Style x:Key="UserNameStyle" TargetType="Label">
+                <Setter Property="TextColor" Value="{DynamicResource PrimaryTextColor}"/>
+                <Setter Property="FontSize" Value="16"/>
+                <Setter Property="VerticalOptions" Value="Center"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+            </Style>
+
+            <Style x:Key="UserStatusStyle" TargetType="Label">
+                <Setter Property="TextColor" Value="{DynamicResource TertiaryTextColor}"/>
+                <Setter Property="FontSize" Value="13"/>
+                <Setter Property="LineBreakMode" Value="TailTruncation"/>
+            </Style>
+
+            <Style x:Key="UserCardStyle" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="{DynamicResource CardBackgroundColor}"/>
+                <Setter Property="StrokeThickness" Value="0"/>
+                <Setter Property="Margin" Value="0,2"/>
+                <Setter Property="Padding" Value="0"/>
+            </Style>
+
+            <Style x:Key="EmptyStateStyle" TargetType="Label">
+                <Setter Property="TextColor" Value="{DynamicResource SecondaryTextColor}"/>
+                <Setter Property="FontSize" Value="16"/>
+                <Setter Property="HorizontalOptions" Value="Center"/>
+                <Setter Property="VerticalOptions" Value="Center"/>
+                <Setter Property="HorizontalTextAlignment" Value="Center"/>
+                <Setter Property="Margin" Value="20"/>
+            </Style>
+
+            <Style x:Key="SectionHeaderStyle" TargetType="Label">
+                <Setter Property="TextColor" Value="{DynamicResource TertiaryTextColor}"/>
+                <Setter Property="FontSize" Value="14"/>
+                <Setter Property="Margin" Value="16,16,16,8"/>
+                <Setter Property="FontAttributes" Value="Bold"/>
+            </Style>
+        </ResourceDictionary>
+    </ContentPage.Resources>
+
+    <Grid RowDefinitions="Auto,*">
+        <!-- Search bar -->
+        <Grid Grid.Row="0" 
+              Padding="16,8" 
+              BackgroundColor="{DynamicResource CardBackgroundColor}">
+            <SearchBar Placeholder="جستجوی کاربران..." 
+                       Text="{Binding SearchQuery, Mode=TwoWay}" 
+                       SearchCommand="{Binding SearchCommand}"
+                       CancelButtonColor="{DynamicResource PrimaryColor}"
+                       Margin="0" 
+                       PlaceholderColor="{DynamicResource TertiaryTextColor}"
+                       TextColor="{DynamicResource PrimaryTextColor}"/>
+        </Grid>
+
+        <!-- Main content -->
+        <Grid Grid.Row="1" RowDefinitions="Auto,*">
+            <!-- Loading indicator -->
+            <ActivityIndicator Grid.RowSpan="2"
+                               IsRunning="{Binding IsLoading}" 
+                               IsVisible="{Binding IsLoading}"
+                               HorizontalOptions="Center" 
+                               VerticalOptions="Center"
+                               Color="{DynamicResource PrimaryColor}"/>
+
+            <!-- Online users section -->
+            <VerticalStackLayout Grid.Row="0" 
+                                 IsVisible="{Binding IsLoading, Converter={StaticResource InverseBoolConverter}}">
+                <Label Text="کاربران آنلاین" 
+                       Style="{StaticResource SectionHeaderStyle}"
+                       IsVisible="{Binding OnlineUsers.Count, Converter={StaticResource IntToBoolConverter}}"/>
+            </VerticalStackLayout>
+
+            <!-- Users list -->
+            <CollectionView Grid.Row="1" 
+                            ItemsSource="{Binding FilteredUsers}" 
+                            SelectionMode="None"
+                            IsVisible="{Binding IsLoading, Converter={StaticResource InverseBoolConverter}}">
+                <CollectionView.EmptyView>
+                    <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center">
+                        <Label Text="کاربری یافت نشد" Style="{StaticResource EmptyStateStyle}"/>
+
+                        <Label IsVisible="{Binding HasSearchQuery}"
+                               Text="برای جستجوی کاربر، نام یا شماره تلفن را وارد کنید"
+                               Style="{StaticResource EmptyStateStyle}"
+                               FontSize="14"
+                               Margin="0,-10,0,0"/>
+                    </VerticalStackLayout>
+                </CollectionView.EmptyView>
+
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="model:UserModel">
+                        <Border Style="{StaticResource UserCardStyle}">
+                            <Grid Style="{StaticResource UserItemStyle}" ColumnDefinitions="Auto,*">
+                                <!-- User avatar with online status -->
+                                <Grid Grid.Column="0" HeightRequest="50" WidthRequest="50">
+                                    <Border Style="{StaticResource InitialsCircleStyle}">
+                                        <Label Text="{Binding Initials}" Style="{StaticResource InitialsLabelStyle}"/>
+                                    </Border>
+                                    <Border WidthRequest="12"
+                                            HeightRequest="12"
+                                            StrokeThickness="2"
+                                            Stroke="{DynamicResource CardBackgroundColor}"
+                                            BackgroundColor="{Binding IsOnline, Converter={StaticResource OnlineStatusColorConverter}}"
+                                            StrokeShape="RoundRectangle 6"
+                                            HorizontalOptions="End"
+                                            VerticalOptions="End"/>
+                                </Grid>
+
+                                <!-- User info -->
+                                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                    <Label Text="{Binding DisplayName}" Style="{StaticResource UserNameStyle}"/>
+                                    <Label Style="{StaticResource UserStatusStyle}">
+                                        <Label.Text>
+                                            <MultiBinding StringFormat="{}{0} • {1}">
+                                                <Binding Path="PhoneNumber" />
+                                                <Binding Path="LastActiveText" />
+                                            </MultiBinding>
+                                        </Label.Text>
+                                    </Label>
+                                </VerticalStackLayout>
+
+                                <!-- Tap gesture to start chat -->
+                                <Grid.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:NewChatViewModel}}, Path=StartChatCommand}" 
+                                                          CommandParameter="{Binding .}"/>
+                                </Grid.GestureRecognizers>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </Grid>
+    </Grid>
+</ContentPage>
