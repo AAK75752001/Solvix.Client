@@ -5,25 +5,25 @@ using Solvix.Client.Core.Interfaces;
 using Solvix.Client.Core.Models;
 using Solvix.Client.MVVM.Views;
 using System.Collections.ObjectModel;
+using System.Linq;
+using System.Threading.Tasks;
+using System.Threading; // Required for CancellationTokenSource
 
 namespace Solvix.Client.MVVM.ViewModels
 {
     public partial class NewChatViewModel : ObservableObject
     {
-        #region Services and Logger
         private readonly IUserService _userService;
         private readonly IChatService _chatService;
         private readonly IToastService _toastService;
         private readonly IAuthService _authService;
         private readonly ILogger<NewChatViewModel> _logger;
-        #endregion
+        private long _currentUserId;
+        private CancellationTokenSource? _searchDebounceCts;
 
-        #region Observable Properties
-        [ObservableProperty]
-        private ObservableCollection<UserModel> _allUsers = new();
 
         [ObservableProperty]
-        private ObservableCollection<UserModel> _onlineUsers = new();
+        private ObservableCollection<UserModel> _onlineUsersCache = new();
 
         [ObservableProperty]
         private ObservableCollection<UserModel> _filteredUsers = new();
@@ -38,9 +38,7 @@ namespace Solvix.Client.MVVM.ViewModels
         [NotifyPropertyChangedFor(nameof(HasSearchQuery))]
         private bool _hasPerformedSearch = false;
 
-        // اضافه کردن مشخصه‌ای که نشان می‌دهد آیا جستجویی انجام شده یا خیر
         public bool HasSearchQuery => !string.IsNullOrWhiteSpace(SearchQuery);
-        #endregion
 
         public NewChatViewModel(
             IUserService userService,
@@ -55,55 +53,65 @@ namespace Solvix.Client.MVVM.ViewModels
             _authService = authService;
             _logger = logger;
 
-            // پردازش تغییرات در متن جستجو
-            PropertyChanged += (s, e) =>
+            PropertyChanged += async (s, e) =>
             {
-                if (e.PropertyName == nameof(SearchQuery) && !IsLoading)
+                if (e.PropertyName == nameof(SearchQuery))
                 {
-                    // حذف لیست فیلتر شده در صورت خالی بودن عبارت جستجو
-                    if (string.IsNullOrWhiteSpace(SearchQuery))
-                    {
-                        HasPerformedSearch = false;
-                        FilteredUsers = new ObservableCollection<UserModel>(OnlineUsers);
-                    }
+                    await OnSearchQueryChanged();
                 }
             };
         }
 
-        #region Methods
-        // بارگذاری داده‌ها در زمان ورود به صفحه
+        private async Task InitializeAsync()
+        {
+            if (_currentUserId == 0)
+            {
+                _currentUserId = await _authService.GetUserIdAsync();
+                if (_currentUserId == 0)
+                {
+                    _logger.LogError("Failed to get current user ID during initialization.");
+                    await _toastService.ShowToastAsync("خطا در شناسایی کاربر فعلی.", ToastType.Error);
+                }
+            }
+        }
+
+
         public async Task LoadDataAsync()
         {
             if (IsLoading) return;
-
             IsLoading = true;
             _logger.LogInformation("بارگذاری داده‌های صفحه چت جدید...");
 
+            await InitializeAsync();
+            if (_currentUserId == 0)
+            {
+                IsLoading = false;
+                return;
+            }
+
             try
             {
-                // بارگذاری لیست کاربران آنلاین
                 var onlineUsersList = await _userService.GetOnlineUsersAsync();
 
                 if (onlineUsersList != null && onlineUsersList.Any())
                 {
-                    // به‌روزرسانی مجموعه کاربران آنلاین
-                    OnlineUsers = new ObservableCollection<UserModel>(onlineUsersList);
-                    _logger.LogInformation("{Count} کاربر آنلاین یافت شد", OnlineUsers.Count);
-
-                    // در ابتدا، لیست فیلتر شده همان لیست کاربران آنلاین است
-                    FilteredUsers = new ObservableCollection<UserModel>(OnlineUsers);
+                    OnlineUsersCache = new ObservableCollection<UserModel>(onlineUsersList.Where(u => u.Id != _currentUserId));
+                    _logger.LogInformation("{Count} کاربر آنلاین (به جز کاربر فعلی) یافت شد", OnlineUsersCache.Count);
                 }
                 else
                 {
-                    OnlineUsers.Clear();
-                    FilteredUsers.Clear();
+                    OnlineUsersCache.Clear();
                     _logger.LogInformation("هیچ کاربر آنلاینی یافت نشد");
                 }
+
+                await ApplyFilterAsync();
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "خطا در بارگذاری لیست کاربران آنلاین");
                 await _toastService.ShowToastAsync("خطا در بارگذاری لیست کاربران", ToastType.Error);
+                OnlineUsersCache.Clear();
+                FilteredUsers.Clear();
             }
             finally
             {
@@ -111,73 +119,99 @@ namespace Solvix.Client.MVVM.ViewModels
             }
         }
 
-        // جستجوی کاربران بر اساس نام یا شماره تلفن
-        private async Task SearchUsersAsync()
+        private async Task OnSearchQueryChanged()
         {
-            if (string.IsNullOrWhiteSpace(SearchQuery)) return;
-
-            IsLoading = true;
-            _logger.LogInformation("جستجوی کاربران با عبارت: {Query}", SearchQuery);
-            HasPerformedSearch = true;
+            _searchDebounceCts?.Cancel();
+            _searchDebounceCts = new CancellationTokenSource();
+            CancellationToken token = _searchDebounceCts.Token;
 
             try
             {
-                var users = await _userService.SearchUsersAsync(SearchQuery);
+                await Task.Delay(300, token);
+                if (token.IsCancellationRequested) return;
 
-                if (users != null && users.Any())
-                {
-                    FilteredUsers = new ObservableCollection<UserModel>(users);
-                    _logger.LogInformation("{Count} کاربر با جستجوی \"{Query}\" یافت شد", users.Count, SearchQuery);
-                }
-                else
-                {
-                    FilteredUsers.Clear();
-                    _logger.LogInformation("هیچ کاربری با جستجوی \"{Query}\" یافت نشد", SearchQuery);
-                }
+                await ApplyFilterAsync();
             }
-            catch (Exception ex)
+            catch (TaskCanceledException)
             {
-                _logger.LogError(ex, "خطا در جستجوی کاربران با عبارت \"{Query}\"", SearchQuery);
-                await _toastService.ShowToastAsync("خطا در جستجوی کاربران", ToastType.Error);
-            }
-            finally
-            {
-                IsLoading = false;
+                _logger.LogTrace("Search debounce cancelled.");
             }
         }
-        #endregion
 
-        #region Commands
+        private async Task ApplyFilterAsync()
+        {
+            if (IsLoading && string.IsNullOrWhiteSpace(SearchQuery)) return;
+
+            IsLoading = true;
+
+            if (string.IsNullOrWhiteSpace(SearchQuery))
+            {
+                HasPerformedSearch = false;
+                FilteredUsers = new ObservableCollection<UserModel>(OnlineUsersCache);
+                _logger.LogInformation("نمایش لیست کاربران آنلاین اولیه (فیلتر شده).");
+            }
+            else
+            {
+                _logger.LogInformation("جستجوی کاربران با عبارت: {Query}", SearchQuery);
+                HasPerformedSearch = true;
+                try
+                {
+                    var usersFromServer = await _userService.SearchUsersAsync(SearchQuery);
+                    if (usersFromServer != null)
+                    {
+                        // سرور باید کاربر فعلی را فیلتر کند، اما برای اطمینان مجدد فیلتر می‌کنیم
+                        FilteredUsers = new ObservableCollection<UserModel>(usersFromServer.Where(u => u.Id != _currentUserId));
+                        _logger.LogInformation("{Count} کاربر با جستجوی \"{Query}\" یافت شد", FilteredUsers.Count, SearchQuery);
+                    }
+                    else
+                    {
+                        FilteredUsers.Clear();
+                        _logger.LogInformation("هیچ کاربری با جستجوی \"{Query}\" یافت نشد (پاسخ سرور null بود)", SearchQuery);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "خطا در جستجوی کاربران با عبارت \"{Query}\"", SearchQuery);
+                    await _toastService.ShowToastAsync("خطا در جستجوی کاربران", ToastType.Error);
+                    FilteredUsers.Clear();
+                }
+            }
+            IsLoading = false;
+        }
+
+
         [RelayCommand]
         private async Task SearchAsync()
         {
-            await SearchUsersAsync();
+            await ApplyFilterAsync();
         }
 
         [RelayCommand]
         private async Task StartChatAsync(UserModel user)
         {
             if (user == null) return;
+            if (user.Id == _currentUserId)
+            {
+                await _toastService.ShowToastAsync("امکان شروع چت با خودتان وجود ندارد.", ToastType.Warning);
+                return;
+            }
 
             IsLoading = true;
             _logger.LogInformation("شروع چت با کاربر {UserName} (ID: {UserId})", user.DisplayName, user.Id);
 
             try
             {
-                // ایجاد چت جدید یا دریافت چت موجود با کاربر انتخاب شده
                 var result = await _chatService.StartChatWithUserAsync(user.Id);
 
                 if (result.chatId.HasValue)
                 {
                     _logger.LogInformation("چت با کاربر {UserName} ایجاد شد. ChatId: {ChatId}, موجود بود: {AlreadyExists}",
                         user.DisplayName, result.chatId, result.alreadyExists);
-
-                    // انتقال به صفحه چت
                     await Shell.Current.GoToAsync($"{nameof(ChatPage)}?ChatId={result.chatId}");
                 }
                 else
                 {
-                    _logger.LogError("خطا در ایجاد چت با کاربر {UserName}", user.DisplayName);
+                    _logger.LogError("خطا در ایجاد چت با کاربر {UserName}. ChatId از سرور دریافت نشد.", user.DisplayName);
                     await _toastService.ShowToastAsync("خطا در ایجاد چت. لطفاً مجدداً تلاش کنید.", ToastType.Error);
                 }
             }
@@ -191,6 +225,5 @@ namespace Solvix.Client.MVVM.ViewModels
                 IsLoading = false;
             }
         }
-        #endregion
     }
 }

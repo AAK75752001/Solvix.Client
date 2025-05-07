@@ -1,6 +1,10 @@
 ﻿using Solvix.Client.Core.Interfaces;
 using Solvix.Client.Core.Models;
 using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Solvix.Client.Core.Services
 {
@@ -100,31 +104,18 @@ namespace Solvix.Client.Core.Services
             {
                 _logger.LogInformation("Starting chat with user {RecipientUserId}...", recipientUserId);
 
-                var result = await _apiService.PostAsync<dynamic>(Constants.Endpoints.StartChat, recipientUserId);
+                var response = await _apiService.PostAsync<StartChatResponseDto>(Constants.Endpoints.StartChat, recipientUserId);
 
-                if (result != null && result.chatId != null)
+                if (response != null)
                 {
-                    try
-                    {
-                        Guid chatIdResult = Guid.Parse(result.chatId.ToString());
-                        bool alreadyExistsResult = bool.Parse(result.alreadyExists.ToString());
-
-                        _logger.LogInformation("Chat started/found with user {RecipientUserId}. ChatId: {ChatId}, Existed: {AlreadyExists}",
-                            recipientUserId, chatIdResult, alreadyExistsResult);
-
-                        return (chatIdResult, alreadyExistsResult);
-                    }
-                    catch (Exception parseEx)
-                    {
-                        _logger.LogError(parseEx, "Error parsing StartChat response object.");
-                        await _toastService.ShowToastAsync("خطا در پردازش پاسخ سرور", ToastType.Error);
-                        return (null, false);
-                    }
+                    _logger.LogInformation("Chat started/found with user {RecipientUserId}. ChatId: {ChatId}, Existed: {AlreadyExists}",
+                        recipientUserId, response.ChatId, response.AlreadyExists);
+                    return (response.ChatId, response.AlreadyExists);
                 }
                 else
                 {
-                    _logger.LogWarning("StartChat response was null or did not contain chatId.");
-                    await _toastService.ShowToastAsync("پاسخ نامعتبر از سرور دریافت شد", ToastType.Error);
+                    _logger.LogWarning("StartChat response was null or did not contain expected data for user {RecipientUserId}.", recipientUserId);
+                    await _toastService.ShowToastAsync("پاسخ نامعتبر از سرور برای شروع چت دریافت شد", ToastType.Error);
                     return (null, false);
                 }
             }
@@ -206,7 +197,6 @@ namespace Solvix.Client.Core.Services
         }
     }
 
-    // Helper class for sending messages
     public class SendMessageDto
     {
         public Guid ChatId { get; set; }
