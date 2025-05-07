@@ -146,13 +146,16 @@ namespace Solvix.Client.MVVM.ViewModels
 
             _logger.LogInformation("Attempting to send message to chat {ChatId}", ActualChatId);
 
+            // پاک کردن متن پیام قبل از شروع فرآیند ارسال
+            string contentCopy = messageContentToSend;
+            NewMessageText = string.Empty;
+
             IsSendingMessage = true;
-            var optimisticMessage = CreateOptimisticMessage(messageContentToSend);
-            NewMessageText = string.Empty; // Clear input immediately after creating optimistic message
+            var optimisticMessage = CreateOptimisticMessage(contentCopy);
 
             try
             {
-                // Add optimistic message to UI immediately without clearing the collection
+                // افزودن پیام خوش‌بینانه به UI قبل از ارسال واقعی
                 await MainThread.InvokeOnMainThreadAsync(() =>
                 {
                     Messages.Add(optimisticMessage);
@@ -165,7 +168,6 @@ namespace Solvix.Client.MVVM.ViewModels
                 {
                     try
                     {
-                        // Pass CorrelationId when sending via SignalR
                         sentViaSignalR = await _signalRService.SendMessageAsync(optimisticMessage);
                         _logger.LogInformation("Attempted to send message via SignalR. Success: {SentViaSignalR}", sentViaSignalR);
                     }
@@ -183,8 +185,9 @@ namespace Solvix.Client.MVVM.ViewModels
                 if (!sentViaSignalR)
                 {
                     _logger.LogInformation("Sending message via ChatService API.");
-                    var sentMessageDto = await _chatService.SendMessageAsync(ActualChatId, messageContentToSend);
-                    // Update status based on API response (success/failure)
+                    var sentMessageDto = await _chatService.SendMessageAsync(ActualChatId, contentCopy);
+
+                    // به‌روزرسانی وضعیت پیام بر اساس پاسخ API
                     await MainThread.InvokeOnMainThreadAsync(() => UpdateSentMessageStatusFromApi(optimisticMessage, sentMessageDto));
                 }
             }
@@ -504,34 +507,40 @@ namespace Solvix.Client.MVVM.ViewModels
 
                 if (!_signalRService.IsConnected) await _signalRService.StartAsync();
 
-                // Fetch chat details and initial messages concurrently
-                var chatDetailsTask = _chatService.GetChatByIdAsync(ActualChatId);
-                var initialMessagesTask = _chatService.GetChatMessagesAsync(ActualChatId, 0, 30);
-                await Task.WhenAll(chatDetailsTask, initialMessagesTask);
-
-                CurrentChat = await chatDetailsTask;
+                // دریافت اطلاعات چت
+                CurrentChat = await _chatService.GetChatByIdAsync(ActualChatId);
                 if (CurrentChat == null) throw new Exception("Chat not found or access denied.");
 
-                var initialMessages = await initialMessagesTask;
+                // اطمینان از تنظیم صحیح OtherParticipant
+                if (!CurrentChat.IsGroup && CurrentChat.Participants != null && CurrentChat.Participants.Any())
+                {
+                    CurrentChat.OtherParticipant = CurrentChat.Participants.FirstOrDefault(p => p.Id != _currentUserId);
+                    _logger.LogInformation("Other participant set: {Name}", CurrentChat.OtherParticipant?.DisplayName ?? "Unknown");
+                }
+
+                // دریافت پیام‌ها
+                var initialMessages = await _chatService.GetChatMessagesAsync(ActualChatId, 0, 30);
                 if (initialMessages != null)
                 {
                     foreach (var msg in initialMessages.OrderBy(m => m.SentAt))
                     {
                         msg.IsOwnMessage = msg.SenderId == _currentUserId;
-                        SetMessageStatusFromData(msg); // Set status correctly based on loaded data
-
+                        SetMessageStatusFromData(msg);
                         Messages.Add(msg);
                     }
                     _logger.LogInformation("Loaded {Count} initial messages for Chat {ActualChatId}", initialMessages.Count, ActualChatId);
                     CanLoadMore = initialMessages.Count >= 30;
                 }
-                else CanLoadMore = false;
+                else
+                {
+                    CanLoadMore = false;
+                }
 
                 _isInitialized = true;
                 _logger.LogInformation("Chat {ActualChatId} initialized successfully.", ActualChatId);
-                ScrollToBottom(); // Scroll after initial load
+                ScrollToBottom();
 
-                // Mark visible messages as read after loading
+                // علامت‌گذاری پیام‌های قابل مشاهده به عنوان خوانده‌شده
                 await MarkAllVisibleAsReadAsync();
             }
             catch (Exception ex)

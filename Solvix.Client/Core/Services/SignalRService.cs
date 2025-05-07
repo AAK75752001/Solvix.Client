@@ -133,6 +133,9 @@ namespace Solvix.Client.Core.Services
 
             try
             {
+                _logger.LogInformation("Sending message via SignalR to chat {ChatId}: {Content}",
+           message.ChatId, message.Content.Substring(0, Math.Min(20, message.Content.Length)));
+
                 await _hubConnection!.InvokeAsync("SendToChat", message.ChatId, message.Content, message.CorrelationId);
                 _logger.LogInformation("Message sent via SignalR to chat {ChatId} with CorrelationId {CorrelationId}", message.ChatId, message.CorrelationId);
                 return true;

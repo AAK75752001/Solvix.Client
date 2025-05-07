@@ -51,7 +51,7 @@ namespace Solvix.Client.Core.Models
             get
             {
                 if (IsOnline)
-                    return "Online";
+                    return "آنلاین";
 
                 if (!LastActive.HasValue)
                     return string.Empty;
@@ -59,16 +59,16 @@ namespace Solvix.Client.Core.Models
                 var timeSpan = DateTime.UtcNow - LastActive.Value;
 
                 if (timeSpan.TotalMinutes < 1)
-                    return "Just now";
+                    return "لحظاتی پیش";
 
                 if (timeSpan.TotalHours < 1)
-                    return $"{(int)timeSpan.TotalMinutes} minutes ago";
+                    return $"{(int)timeSpan.TotalMinutes} دقیقه پیش";
 
                 if (timeSpan.TotalDays < 1)
-                    return $"{(int)timeSpan.TotalHours} hours ago";
+                    return $"{(int)timeSpan.TotalHours} ساعت پیش";
 
                 if (timeSpan.TotalDays < 7)
-                    return $"{(int)timeSpan.TotalDays} days ago";
+                    return $"{(int)timeSpan.TotalDays} روز پیش";
 
                 return LastActive.Value.ToString("yyyy-MM-dd");
             }

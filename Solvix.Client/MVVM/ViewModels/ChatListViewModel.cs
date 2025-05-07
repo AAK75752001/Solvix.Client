@@ -10,15 +10,17 @@ using Solvix.Client.MVVM.Views;
 
 namespace Solvix.Client.MVVM.ViewModels
 {
-    public partial class ChatListViewModel : ObservableObject
+    public partial class ChatListViewModel : ObservableObject, IDisposable
     {
         private readonly IChatService _chatService;
         private readonly IToastService _toastService;
         private readonly IAuthService _authService;
+        private readonly ISignalRService _signalRService;
         private readonly ILogger<ChatListViewModel> _logger;
+        private bool _isDisposed = false;
+        private long _currentUserId;
 
         private List<ChatModel> _allChats = new();
-
 
         [ObservableProperty]
         private ObservableCollection<ChatModel> _filteredChats = new();
@@ -35,17 +37,20 @@ namespace Solvix.Client.MVVM.ViewModels
         [ObservableProperty]
         private ChatModel? _selectedChat;
 
+        [ObservableProperty]
+        private bool _isConnected;
 
         public ChatListViewModel(
             IChatService chatService,
             IToastService toastService,
-             IAuthService authService,
-             ILogger<ChatListViewModel> logger)
-
+            IAuthService authService,
+            ISignalRService signalRService,
+            ILogger<ChatListViewModel> logger)
         {
             _chatService = chatService;
             _toastService = toastService;
             _authService = authService;
+            _signalRService = signalRService;
             _logger = logger;
 
             PropertyChanged += (s, e) =>
@@ -55,6 +60,13 @@ namespace Solvix.Client.MVVM.ViewModels
                     FilterChats();
                 }
             };
+
+            // اشتراک در رویدادهای SignalR
+            _signalRService.OnUserStatusChanged += SignalRUserStatusChanged;
+            _signalRService.OnConnectionStateChanged += SignalRConnectionStateChanged;
+            _signalRService.OnMessageReceived += SignalRMessageReceived;
+
+            IsConnected = _signalRService.IsConnected;
         }
 
         // دستور برای بارگذاری چت‌ها
@@ -67,21 +79,34 @@ namespace Solvix.Client.MVVM.ViewModels
             _logger.LogInformation("Loading chats... Force refresh: {ForceRefresh}", forceRefresh);
             try
             {
+                // اگر SignalR متصل نیست، تلاش کنیم متصل شویم
+                if (!_signalRService.IsConnected)
+                {
+                    await InitializeSignalRAsync();
+                }
+
+                // دریافت آیدی کاربر جاری
+                _currentUserId = await _authService.GetUserIdAsync();
+                if (_currentUserId == 0)
+                {
+                    _logger.LogError("Failed to get current user ID");
+                    await _toastService.ShowToastAsync("خطا در احراز هویت کاربر", ToastType.Error);
+                    return;
+                }
+
                 var chatList = await _chatService.GetUserChatsAsync();
 
                 if (chatList != null)
                 {
                     _allChats = chatList.OrderByDescending(c => c.LastMessageTime ?? c.CreatedAt).ToList();
-                    long currentUserId = await _authService.GetUserIdAsync();
 
                     foreach (var chat in _allChats)
                     {
-                        CalculateOtherParticipant(chat, currentUserId);
+                        CalculateOtherParticipant(chat, _currentUserId);
                     }
 
                     FilterChats();
                     _logger.LogInformation("Chats loaded and filtered successfully. Count: {Count}", _allChats.Count);
-
                 }
                 else
                 {
@@ -101,13 +126,130 @@ namespace Solvix.Client.MVVM.ViewModels
             }
         }
 
+        // اتصال به SignalR و پیکربندی رویدادها
+        private async Task InitializeSignalRAsync()
+        {
+            try
+            {
+                _logger.LogInformation("Initializing SignalR connection...");
+                await _signalRService.StartAsync();
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error initializing SignalR");
+            }
+        }
 
+        // تنظیم طرف دیگر مکالمه در چت
         private void CalculateOtherParticipant(ChatModel chat, long currentUserId)
         {
             if (!chat.IsGroup && chat.Participants != null && chat.Participants.Any())
             {
                 chat.OtherParticipant = chat.Participants.FirstOrDefault(p => p.Id != currentUserId);
+
+                // اطمینان از وجود اطلاعات حداقلی برای طرف مقابل
+                if (chat.OtherParticipant != null)
+                {
+                    _logger.LogDebug("Other participant for chat {ChatId}: {UserId} - {Name} - Online: {IsOnline}",
+                        chat.Id, chat.OtherParticipant.Id, chat.OtherParticipant.DisplayName, chat.OtherParticipant.IsOnline);
+                }
+                else
+                {
+                    _logger.LogWarning("No other participant found for chat {ChatId}", chat.Id);
+                }
             }
+        }
+
+        // رویدادهای SignalR
+        private void SignalRUserStatusChanged(long userId, bool isOnline)
+        {
+            if (_isDisposed) return;
+
+            _logger.LogInformation("User status changed: UserId={UserId}, IsOnline={IsOnline}", userId, isOnline);
+
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                var updatedChats = false;
+
+                // بررسی و به‌روزرسانی وضعیت آنلاین کاربر در تمام چت‌ها
+                foreach (var chat in _allChats.Where(c => !c.IsGroup && c.OtherParticipant?.Id == userId))
+                {
+                    chat.OtherParticipant.IsOnline = isOnline;
+
+                    // اگر کاربر آفلاین شد، زمان آخرین فعالیت را به‌روز کنیم
+                    if (!isOnline && chat.OtherParticipant != null)
+                    {
+                        chat.OtherParticipant.LastActive = DateTime.UtcNow;
+                    }
+
+                    updatedChats = true;
+                    _logger.LogDebug("Updated online status for user {UserId} in chat {ChatId} to {IsOnline}",
+                        userId, chat.Id, isOnline);
+                }
+
+                // اگر تغییری در چت‌ها داشتیم، لیست را به‌روز کنیم
+                if (updatedChats)
+                {
+                    FilterChats();
+                }
+            });
+        }
+
+        private void SignalRConnectionStateChanged(bool isConnected)
+        {
+            if (_isDisposed) return;
+
+            _logger.LogInformation("SignalR connection state changed: {IsConnected}", isConnected);
+
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                IsConnected = isConnected;
+
+                // اگر دوباره متصل شدیم، لیست چت‌ها را تازه‌سازی کنیم
+                if (isConnected)
+                {
+                    LoadChatsAsync(true).ConfigureAwait(false);
+                }
+            });
+        }
+
+        private void SignalRMessageReceived(MessageModel message)
+        {
+            if (_isDisposed) return;
+
+            _logger.LogDebug("Message received via SignalR: ChatId={ChatId}, MessageId={MessageId}",
+                message.ChatId, message.Id);
+
+            MainThread.BeginInvokeOnMainThread(async () =>
+            {
+                // پیدا کردن چت مربوط به پیام
+                var chat = _allChats.FirstOrDefault(c => c.Id == message.ChatId);
+
+                if (chat != null)
+                {
+                    // به‌روزرسانی آخرین پیام
+                    chat.LastMessage = message.Content;
+                    chat.LastMessageTime = message.SentAt;
+
+                    // اگر پیام از طرف مقابل است و چت انتخاب نشده، تعداد پیام‌های نخوانده را افزایش دهیم
+                    if (message.SenderId != _currentUserId && (_selectedChat == null || _selectedChat.Id != chat.Id))
+                    {
+                        chat.UnreadCount++;
+                    }
+
+                    _logger.LogDebug("Updated chat {ChatId} with new message data", chat.Id);
+
+                    // به‌روزرسانی لیست چت‌ها
+                    FilterChats();
+                }
+                else
+                {
+                    // چت جدید است، باید لیست چت‌ها را به‌روزرسانی کنیم
+                    _logger.LogInformation("Received message for unknown chat {ChatId}. Refreshing chat list...", message.ChatId);
+                    await LoadChatsAsync(true);
+                }
+            });
         }
 
         [RelayCommand]
@@ -132,34 +274,19 @@ namespace Solvix.Client.MVVM.ViewModels
                 chatsToShow = _allChats.Where(c =>
                     (c.DisplayTitle != null && c.DisplayTitle.ToLowerInvariant().Contains(query)) ||
                     (c.LastMessage != null && c.LastMessage.ToLowerInvariant().Contains(query)) ||
-                    (c.OtherParticipant?.PhoneNumber != null && c.OtherParticipant.PhoneNumber.Contains(query)) // جستجو در شماره تلفن مخاطب
+                    (c.OtherParticipant?.PhoneNumber != null && c.OtherParticipant.PhoneNumber.Contains(query))
                 );
             }
 
-            var chatsToRemove = FilteredChats.Except(chatsToShow).ToList();
-            foreach (var chat in chatsToRemove) { FilteredChats.Remove(chat); }
+            // مرتب‌سازی چت‌ها بر اساس زمان آخرین پیام
+            var sortedChats = chatsToShow.OrderByDescending(c => c.LastMessageTime ?? c.CreatedAt).ToList();
 
-            var chatsToAdd = chatsToShow.Except(FilteredChats).ToList();
-            foreach (var chat in chatsToAdd.OrderByDescending(c => c.LastMessageTime ?? c.CreatedAt))
-            {
-                int index = chatsToShow.ToList().FindIndex(c => c.Id == chat.Id);
-                if (index >= 0 && index < FilteredChats.Count)
-                    FilteredChats.Insert(index, chat);
-                else
-                    FilteredChats.Add(chat);
-            }
-
-            var sorted = FilteredChats.OrderByDescending(c => c.LastMessageTime ?? c.CreatedAt).ToList();
-            if (!FilteredChats.SequenceEqual(sorted))
-            {
-                FilteredChats = new ObservableCollection<ChatModel>(sorted);
-                OnPropertyChanged(nameof(FilteredChats));
-            }
+            // تنظیم لیست جدید
+            FilteredChats = new ObservableCollection<ChatModel>(sortedChats);
+            OnPropertyChanged(nameof(FilteredChats));
 
             _logger.LogDebug("Filtered chats count: {Count}", FilteredChats.Count);
         }
-
-
 
         [RelayCommand]
         private async Task GoToChatAsync(ChatModel? chat)
@@ -172,6 +299,9 @@ namespace Solvix.Client.MVVM.ViewModels
 
             try
             {
+                // تنظیم چت انتخاب شده
+                SelectedChat = chat;
+
                 _logger.LogInformation("Navigating to ChatPage for ChatId: {ChatId}", chat.Id);
                 await Shell.Current.GoToAsync($"{nameof(ChatPage)}?ChatId={chat.Id}");
             }
@@ -191,7 +321,6 @@ namespace Solvix.Client.MVVM.ViewModels
         {
             _logger.LogInformation("Search triggered with query: {Query}", SearchQuery);
             FilterChats();
-            // await KeyboardExtensions.HideKeyboardAsync( CancellationToken.None);
         }
 
         [RelayCommand]
@@ -199,7 +328,6 @@ namespace Solvix.Client.MVVM.ViewModels
         {
             _logger.LogInformation("New Chat command executed.");
             await _toastService.ShowToastAsync("شروع چت جدید (به زودی!)", ToastType.Info);
-            // await _navigationService.NavigateToAsync(nameof(NewChatPage));
         }
 
         [RelayCommand]
@@ -207,13 +335,42 @@ namespace Solvix.Client.MVVM.ViewModels
         {
             _logger.LogInformation("Go To Settings command executed.");
             await _toastService.ShowToastAsync("رفتن به تنظیمات (به زودی!)", ToastType.Info);
-            // await _navigationService.NavigateToAsync(nameof(SettingsPage));
         }
 
         public async Task OnAppearingAsync()
         {
             _logger.LogInformation("ChatListPage appearing. Loading chats...");
+
+            // تلاش برای اتصال به SignalR
+            if (!_signalRService.IsConnected)
+            {
+                await InitializeSignalRAsync();
+            }
+
             await LoadChatsAsync();
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_isDisposed) return;
+
+            if (disposing)
+            {
+                _logger.LogInformation("Disposing ChatListViewModel");
+
+                // لغو اشتراک در رویدادهای SignalR
+                _signalRService.OnUserStatusChanged -= SignalRUserStatusChanged;
+                _signalRService.OnConnectionStateChanged -= SignalRConnectionStateChanged;
+                _signalRService.OnMessageReceived -= SignalRMessageReceived;
+            }
+
+            _isDisposed = true;
         }
     }
 }

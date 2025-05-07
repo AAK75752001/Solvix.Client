@@ -6,8 +6,7 @@
              xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
              xmlns:converters="clr-namespace:Solvix.Client.Core.Converters"
              x:Class="Solvix.Client.MVVM.Views.ChatPage"
-             x:DataType="vm:ChatPageViewModel"
-             Title="{Binding CurrentChat.DisplayTitle}">
+             x:DataType="vm:ChatPageViewModel">
 
     <ContentPage.Resources>
         <ResourceDictionary>
@@ -94,14 +93,6 @@
               ColumnDefinitions="Auto,*,Auto" 
               ColumnSpacing="10">
 
-            <!-- Bottom Separator Line -->
-            <BoxView Grid.ColumnSpan="3"
-                     HeightRequest="1"
-                     Color="{DynamicResource FrameBorderColor}"
-                     VerticalOptions="End"
-                     HorizontalOptions="Fill"
-                     Margin="0,0,0,-1"/>
-
             <!-- Back Button -->
             <Button Grid.Column="0"
                     Text="arrow_back"
@@ -118,7 +109,7 @@
 
             <!-- User Info -->
             <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
-                <Label Text="{Binding CurrentChat.DisplayTitle}"
+                <Label Text="{Binding CurrentChat.OtherParticipant.DisplayName}"
                        FontSize="16"
                        FontAttributes="Bold"
                        TextColor="{DynamicResource PrimaryTextColor}"
@@ -126,7 +117,7 @@
                 <Label TextColor="{DynamicResource SecondaryTextColor}" FontSize="12">
                     <Label.Triggers>
                         <DataTrigger TargetType="Label" 
-                                    Binding="{Binding CurrentChat.OtherParticipant.IsOnline}" 
+                                Binding="{Binding CurrentChat.OtherParticipant.IsOnline}" 
                                     Value="True">
                             <Setter Property="Text" Value="آنلاین"/>
                         </DataTrigger>
