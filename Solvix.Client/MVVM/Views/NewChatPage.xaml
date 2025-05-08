@@ -128,7 +128,7 @@
                             IsVisible="{Binding IsLoading, Converter={StaticResource InverseBoolConverter}}">
                 <CollectionView.EmptyView>
                     <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center">
-                        <Label Text="کاربری یافت نشد" Style="{StaticResource EmptyStateStyle}"/>
+                        <Label Text=" کاربر آنلاینی یافت نشد" Style="{StaticResource EmptyStateStyle}"/>
 
                         <Label IsVisible="{Binding HasSearchQuery}"
                                Text="برای جستجوی کاربر، نام یا شماره تلفن را وارد کنید"

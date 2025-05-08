@@ -21,8 +21,6 @@ namespace Solvix.Client.Core.Models
             }
         }
 
-
-
         [JsonIgnore]
         public string Initials
         {
@@ -30,18 +28,44 @@ namespace Solvix.Client.Core.Models
             {
                 string initials = string.Empty;
 
+                // اولویت با نام و نام خانوادگی
                 if (!string.IsNullOrWhiteSpace(FirstName) && FirstName.Length > 0)
                     initials += FirstName[0];
 
                 if (!string.IsNullOrWhiteSpace(LastName) && LastName.Length > 0)
                     initials += LastName[0];
 
+                // اگر نام و نام خانوادگی موجود نبود، از نام کاربری استفاده می‌کنیم
                 if (string.IsNullOrWhiteSpace(initials) && !string.IsNullOrWhiteSpace(Username) && Username.Length > 0)
-                    initials += Username[0];
+                {
+                    // تلاش برای پیدا کردن دو حرف اول در نام کاربری (اگر شامل فاصله یا نقطه است)
+                    var parts = Username.Split(new char[] { ' ', '.', '_' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length > 1)
+                    {
+                        // استفاده از حرف اول دو بخش اول
+                        initials = parts[0].Length > 0 ? parts[0][0].ToString() : "";
+                        initials += parts[1].Length > 0 ? parts[1][0].ToString() : "";
+                    }
+                    else
+                    {
+                        // فقط حرف اول نام کاربری
+                        initials = Username[0].ToString();
 
+                        // اگر نام کاربری طولانی باشد، از حرف دوم هم استفاده می‌کنیم
+                        if (Username.Length > 1)
+                            initials += Username[1].ToString();
+                    }
+                }
+
+                // اگر هنوز حروف اختصاری ایجاد نشده، از شماره تلفن استفاده می‌کنیم
                 if (string.IsNullOrWhiteSpace(initials) && !string.IsNullOrWhiteSpace(PhoneNumber) && PhoneNumber.Length > 0)
-                    initials += PhoneNumber[0];
+                {
+                    initials = PhoneNumber[0].ToString();
+                    if (PhoneNumber.Length > 1)
+                        initials += PhoneNumber[1].ToString();
+                }
 
+                // اگر هیچ چیزی موجود نبود، از علامت سوال استفاده می‌کنیم
                 return !string.IsNullOrWhiteSpace(initials) ? initials.ToUpper() : "?";
             }
         }
@@ -85,4 +109,3 @@ namespace Solvix.Client.Core.Models
         }
     }
 }
-

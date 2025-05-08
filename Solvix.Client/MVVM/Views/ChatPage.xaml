@@ -146,12 +146,27 @@
                LineBreakMode="TailTruncation"
                HorizontalOptions="Center"
                HorizontalTextAlignment="Center"/>
-                <!-- آخرین بازدید رو اینجا نمایش میدیم -->
-                <Label Text="{Binding CurrentChat.OtherParticipant.LastActiveText}"
+
+                <!-- آخرین بازدید با استفاده از Triggers برای حالت آنلاین و آفلاین -->
+                <Label x:Name="LastActiveLabel"
                TextColor="{DynamicResource SecondaryTextColor}" 
                FontSize="12" 
                HorizontalOptions="Center"
-               HorizontalTextAlignment="Center"/>
+               HorizontalTextAlignment="Center">
+                    <Label.Triggers>
+                        <DataTrigger TargetType="Label" 
+                             Binding="{Binding CurrentChat.OtherParticipant.IsOnline}" 
+                             Value="True">
+                            <Setter Property="Text" Value="آنلاین"/>
+                            <Setter Property="TextColor" Value="{DynamicResource SuccessColor}"/>
+                        </DataTrigger>
+                        <DataTrigger TargetType="Label" 
+                             Binding="{Binding CurrentChat.OtherParticipant.IsOnline}" 
+                             Value="False">
+                            <Setter Property="Text" Value="{Binding CurrentChat.OtherParticipant.LastActiveText}"/>
+                        </DataTrigger>
+                    </Label.Triggers>
+                </Label>
             </VerticalStackLayout>
 
             <!-- User Avatar - اصلاح شده برای نمایش حروف اول نام و نام خانوادگی -->
@@ -301,24 +316,65 @@
         <!-- Chat Input Area -->
         <Border Grid.Row="3" Style="{StaticResource ChatInputBorderStyle}" Margin="8">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="5">
-                <Button Grid.Column="0" Text="attach_file" Command="{Binding AttachFileCommand}" Style="{StaticResource ChatInputButtonStyle}"/>
+                <!-- دکمه الصاق فایل -->
+                <Button Grid.Column="0" 
+                Text="attach_file" 
+                Command="{Binding AttachFileCommand}" 
+                Style="{StaticResource ChatInputButtonStyle}">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsSendingMessage}" Value="True">
+                            <Setter Property="Opacity" Value="0.6"/>
+                            <Setter Property="IsEnabled" Value="False"/>
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+
+                <!-- ویرایشگر متن پیام -->
                 <Editor x:Name="MessageEditor" 
-                        Grid.Column="1" 
-                        Text="{Binding NewMessageText, Mode=TwoWay}" 
-                        Style="{StaticResource ChatInputEditorStyle}" 
-                        IsEnabled="{Binding IsSendingMessage, Converter={StaticResource InverseBoolConverter}}"
-                        FlowDirection="{Binding NewMessageText, Converter={StaticResource TextDirectionConverter}}"/>
-                <Button Grid.Column="2" Text="sentiment_satisfied" Command="{Binding EmojiCommand}" Style="{StaticResource ChatInputButtonStyle}"/>
-                <Button Grid.Column="3" Command="{Binding SendMessageCommand}" Style="{StaticResource SendButtonStyle}">
+                Grid.Column="1" 
+                Text="{Binding NewMessageText, Mode=TwoWay}" 
+                Style="{StaticResource ChatInputEditorStyle}" 
+                IsEnabled="{Binding IsSendingMessage, Converter={StaticResource InverseBoolConverter}}"
+                FlowDirection="{Binding NewMessageText, Converter={StaticResource TextDirectionConverter}}">
+                    <Editor.Triggers>
+                        <DataTrigger TargetType="Editor" Binding="{Binding IsSendingMessage}" Value="True">
+                            <Setter Property="Opacity" Value="0.8"/>
+                        </DataTrigger>
+                    </Editor.Triggers>
+                </Editor>
+
+                <!-- دکمه ایموجی -->
+                <Button Grid.Column="2" 
+                Text="sentiment_satisfied" 
+                Command="{Binding EmojiCommand}" 
+                Style="{StaticResource ChatInputButtonStyle}">
+                    <Button.Triggers>
+                        <DataTrigger TargetType="Button" Binding="{Binding IsSendingMessage}" Value="True">
+                            <Setter Property="Opacity" Value="0.6"/>
+                            <Setter Property="IsEnabled" Value="False"/>
+                        </DataTrigger>
+                    </Button.Triggers>
+                </Button>
+
+                <!-- دکمه ارسال با انیمیشن چرخشی هنگام ارسال -->
+                <Button Grid.Column="3" 
+                Command="{Binding SendMessageCommand}" 
+                Style="{StaticResource SendButtonStyle}">
                     <Button.ImageSource>
-                        <FontImageSource FontFamily="MaterialIcons" Glyph="send" Color="{DynamicResource InverseTextColor}" Size="24"/>
+                        <FontImageSource FontFamily="MaterialIcons" 
+                                Glyph="send" 
+                                Color="{DynamicResource InverseTextColor}" 
+                                Size="24"/>
                     </Button.ImageSource>
                     <Button.Triggers>
                         <DataTrigger TargetType="Button" Binding="{Binding NewMessageText.Length, Converter={StaticResource IntToBoolConverter}}" Value="False">
                             <Setter Property="IsEnabled" Value="False"/>
+                            <Setter Property="Opacity" Value="0.7"/>
                         </DataTrigger>
                         <DataTrigger TargetType="Button" Binding="{Binding IsSendingMessage}" Value="True">
                             <Setter Property="IsEnabled" Value="False"/>
+                            <Setter Property="Opacity" Value="0.7"/>
+                            <Setter Property="Rotation" Value="45"/>
                         </DataTrigger>
                     </Button.Triggers>
                 </Button>

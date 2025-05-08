@@ -153,8 +153,21 @@
                                 <TapGestureRecognizer Command="{Binding Source={RelativeSource AncestorType={x:Type vm:ChatListViewModel}}, Path=GoToChatCommand}"
                                      CommandParameter="{Binding .}"/>
                             </Border.GestureRecognizers>
-                            <Grid ColumnDefinitions="Auto, *, Auto" RowDefinitions="Auto, Auto" ColumnSpacing="12" RowSpacing="2">
 
+                            <!-- تغییر رنگ پس‌زمینه آیتم هنگام لمس -->
+                            <VisualStateManager.VisualStateGroups>
+                                <VisualStateGroup Name="CommonStates">
+                                    <VisualState Name="Normal" />
+                                    <VisualState Name="Selected">
+                                        <VisualState.Setters>
+                                            <Setter Property="BackgroundColor" Value="{AppThemeBinding Light=#F0F0F0, Dark=#333333}" />
+                                        </VisualState.Setters>
+                                    </VisualState>
+                                </VisualStateGroup>
+                            </VisualStateManager.VisualStateGroups>
+
+                            <Grid ColumnDefinitions="Auto, *, Auto" RowDefinitions="Auto, Auto" ColumnSpacing="12" RowSpacing="2">
+                                <!-- آواتار کاربر با نشانگر آنلاین بودن -->
                                 <Grid Grid.Row="0" Grid.Column="0" Grid.RowSpan="2" VerticalOptions="Center">
                                     <Border Style="{StaticResource InitialsCircleStyle}">
                                         <Label Text="{Binding OtherParticipant.Initials}" Style="{StaticResource InitialsLabelStyle}"/>
@@ -164,16 +177,39 @@
                            IsVisible="{Binding IsGroup, Converter={StaticResource InverseBoolConverter}}"/>
                                 </Grid>
 
-                                <Label Grid.Row="0" Grid.Column="1" Text="{Binding DisplayTitle}" Style="{StaticResource ChatTitleStyle}" />
-                                <Label Grid.Row="1" Grid.Column="1" Text="{Binding LastMessage}" Style="{StaticResource LastMessageStyle}" 
-                       LineBreakMode="TailTruncation" MaxLines="1"/>
+                                <!-- عنوان چت -->
+                                <Label Grid.Row="0" Grid.Column="1" 
+                       Text="{Binding DisplayTitle}" 
+                       Style="{StaticResource ChatTitleStyle}" 
+                       MaxLines="1" />
 
-                                <Label Grid.Row="0" Grid.Column="2" Text="{Binding LastMessageTimeFormatted}" Style="{StaticResource TimestampStyle}" />
-                                <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource UnreadBadgeStyle}"
+                                <!-- آخرین پیام با تغییر استایل برای پیام‌های نخوانده -->
+                                <Label Grid.Row="1" Grid.Column="1" 
+                       Text="{Binding LastMessage}" 
+                       Style="{StaticResource LastMessageStyle}" 
+                       LineBreakMode="TailTruncation" 
+                       MaxLines="1">
+                                    <Label.Triggers>
+                                        <DataTrigger TargetType="Label" 
+                                     Binding="{Binding UnreadCount, Converter={StaticResource IntToBoolConverter}}" 
+                                     Value="True">
+                                            <Setter Property="FontAttributes" Value="Bold" />
+                                            <Setter Property="TextColor" Value="{DynamicResource PrimaryTextColor}" />
+                                        </DataTrigger>
+                                    </Label.Triggers>
+                                </Label>
+
+                                <!-- زمان آخرین پیام -->
+                                <Label Grid.Row="0" Grid.Column="2" 
+                       Text="{Binding LastMessageTimeFormatted}" 
+                       Style="{StaticResource TimestampStyle}" />
+
+                                <!-- نشانگر تعداد پیام‌های نخوانده -->
+                                <Border Grid.Row="1" Grid.Column="2" 
+                      Style="{StaticResource UnreadBadgeStyle}"
                       IsVisible="{Binding UnreadCount, Converter={StaticResource IntToBoolConverter}}">
                                     <Label Text="{Binding UnreadCount}" Style="{StaticResource UnreadCountLabelStyle}"/>
                                 </Border>
-
                             </Grid>
                         </Border>
                     </DataTemplate>

@@ -540,9 +540,22 @@ namespace Solvix.Client.MVVM.ViewModels
                     _logger.LogInformation("Other participant set: {Name}", CurrentChat.OtherParticipant?.DisplayName ?? "Unknown");
 
                     // اطمینان از داشتن اطلاعات آخرین بازدید
-                    if (CurrentChat.OtherParticipant != null && !CurrentChat.OtherParticipant.LastActive.HasValue)
+                    if (CurrentChat.OtherParticipant != null)
                     {
-                        CurrentChat.OtherParticipant.LastActive = DateTime.UtcNow.AddMinutes(-15); // مقدار پیش‌فرض
+                        if (!CurrentChat.OtherParticipant.LastActive.HasValue)
+                        {
+                            CurrentChat.OtherParticipant.LastActive = DateTime.UtcNow.AddMinutes(-15); // مقدار پیش‌فرض
+                            _logger.LogDebug("Set default LastActive value for user {UserId} in chat {ChatId}",
+                                CurrentChat.OtherParticipant.Id, ActualChatId);
+                        }
+
+                        // بررسی اینکه آیا Initials مقدار دارد
+                        _logger.LogDebug("User {UserId} in chat {ChatId} has initials: {Initials}",
+                            CurrentChat.OtherParticipant.Id, ActualChatId, CurrentChat.OtherParticipant.Initials);
+
+                        // بررسی اینکه آیا LastActiveText مقدار دارد
+                        _logger.LogDebug("User {UserId} in chat {ChatId} has LastActiveText: {LastActiveText}",
+                            CurrentChat.OtherParticipant.Id, ActualChatId, CurrentChat.OtherParticipant.LastActiveText);
                     }
                 }
 
