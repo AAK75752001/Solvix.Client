@@ -265,8 +265,8 @@ namespace Solvix.Client.MVVM.ViewModels
         {
             if (_isDisposed) return;
 
-            _logger.LogDebug("Message received via SignalR: ChatId={ChatId}, MessageId={MessageId}",
-                message.ChatId, message.Id);
+            _logger.LogDebug("Message received via SignalR: ChatId={ChatId}, MessageId={MessageId}, Content={Content}",
+                message.ChatId, message.Id, message.Content?.Substring(0, Math.Min(20, message.Content?.Length ?? 0)));
 
             MainThread.BeginInvokeOnMainThread(async () =>
             {
@@ -287,6 +287,9 @@ namespace Solvix.Client.MVVM.ViewModels
 
                     _logger.LogDebug("Updated chat {ChatId} with new message data. LastMessage: {LastMessage}, LastMessageTime: {LastMessageTime}",
                         chat.Id, chat.LastMessage, chat.LastMessageTime);
+
+                    // مرتب‌سازی مجدد چت‌ها بر اساس زمان آخرین پیام
+                    _allChats = _allChats.OrderByDescending(c => c.LastMessageTime ?? c.CreatedAt).ToList();
 
                     // به‌روزرسانی لیست چت‌ها
                     FilterChats();
@@ -322,7 +325,8 @@ namespace Solvix.Client.MVVM.ViewModels
                 chatsToShow = _allChats.Where(c =>
                     (c.DisplayTitle != null && c.DisplayTitle.ToLowerInvariant().Contains(query)) ||
                     (c.LastMessage != null && c.LastMessage.ToLowerInvariant().Contains(query)) ||
-                    (c.OtherParticipant?.PhoneNumber != null && c.OtherParticipant.PhoneNumber.Contains(query))
+                    (c.OtherParticipant?.PhoneNumber != null && c.OtherParticipant.PhoneNumber.Contains(query)) ||
+                    (c.OtherParticipant?.DisplayName != null && c.OtherParticipant.DisplayName.ToLowerInvariant().Contains(query))
                 );
             }
 
@@ -333,7 +337,9 @@ namespace Solvix.Client.MVVM.ViewModels
             FilteredChats = new ObservableCollection<ChatModel>(sortedChats);
             OnPropertyChanged(nameof(FilteredChats));
 
-            _logger.LogDebug("Filtered chats count: {Count}", FilteredChats.Count);
+            _logger.LogDebug("Filtered chats count: {Count}, with most recent chat at: {RecentTime}",
+                FilteredChats.Count,
+                FilteredChats.Count > 0 ? FilteredChats[0].LastMessageTime?.ToString() : "N/A");
         }
 
         [RelayCommand]

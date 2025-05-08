@@ -68,6 +68,7 @@
                 <Setter Property="Padding" Value="8,10"/>
                 <Setter Property="ColumnSpacing" Value="8"/>
                 <Setter Property="HeightRequest" Value="60"/>
+                <Setter Property="Margin" Value="0"/>
             </Style>
             <Style x:Key="ProfileCircleStyle" TargetType="Border">
                 <Setter Property="WidthRequest" Value="40"/>
@@ -137,7 +138,7 @@
                     Style="{StaticResource BackButtonStyle}"/>
 
             <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center" HorizontalOptions="Center">
-                <Label Text="{Binding CurrentChat.OtherParticipant.DisplayName}"
+                <Label Text="{Binding CurrentChat.DisplayTitle}"
                        FontSize="16"
                        FontAttributes="Bold"
                        TextColor="{DynamicResource PrimaryTextColor}"
@@ -179,10 +180,6 @@
                        HorizontalTextAlignment="Center"
                        VerticalTextAlignment="Center"/>
             </Border>
-
-            <!-- Border for bottom shadow effect -->
-            <BoxView Grid.ColumnSpan="3" HeightRequest="1" VerticalOptions="End" 
-                     BackgroundColor="{DynamicResource FrameBorderColor}" Opacity="0.5"/>
         </Grid>
 
         <!-- Chat Messages with Scroll Detection -->

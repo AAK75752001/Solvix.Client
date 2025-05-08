@@ -150,8 +150,15 @@ namespace Solvix.Client.Core.Services
 
                 if (message != null)
                 {
-                    _logger.LogInformation("Message sent successfully to chat {ChatId}. Message ID: {MessageId}",
-                        chatId, message.Id);
+                    _logger.LogInformation("Message sent successfully to chat {ChatId}. Message ID: {MessageId}, Time: {SentAt}",
+                        chatId, message.Id, message.SentAt);
+
+                    // اطمینان از اینکه SentAt مقدار درستی دارد
+                    if (message.SentAt == default)
+                    {
+                        message.SentAt = DateTime.UtcNow;
+                        _logger.LogWarning("Message SentAt was default, setting to current UTC time: {Now}", message.SentAt);
+                    }
                 }
                 else
                 {
