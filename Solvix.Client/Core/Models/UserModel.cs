@@ -56,7 +56,11 @@ namespace Solvix.Client.Core.Models
                 if (!LastActive.HasValue)
                     return string.Empty;
 
-                var timeSpan = DateTime.UtcNow - LastActive.Value;
+                var localDateTime = LastActive.Value.Kind == DateTimeKind.Utc
+                    ? LastActive.Value.ToLocalTime()
+                    : LastActive.Value;
+
+                var timeSpan = DateTime.Now - localDateTime;
 
                 if (timeSpan.TotalMinutes < 1)
                     return "لحظاتی پیش";
@@ -70,7 +74,7 @@ namespace Solvix.Client.Core.Models
                 if (timeSpan.TotalDays < 7)
                     return $"{(int)timeSpan.TotalDays} روز پیش";
 
-                return LastActive.Value.ToString("yyyy-MM-dd");
+                return $"آخرین بازدید {localDateTime.ToString("yyyy/MM/dd")}";
             }
         }
     }

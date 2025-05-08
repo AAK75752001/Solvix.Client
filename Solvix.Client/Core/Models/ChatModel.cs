@@ -1,4 +1,5 @@
 ﻿using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Text.Json.Serialization;
 
 
@@ -45,12 +46,31 @@ namespace Solvix.Client.Core.Models
             {
                 if (!LastMessageTime.HasValue) return string.Empty;
 
-                var localDateTime = LastMessageTime.Value;
-                var today = DateTime.Now.Date;
+                try
+                {
+                    var localDateTime = LastMessageTime.Value.Kind == DateTimeKind.Utc
+                        ? LastMessageTime.Value.ToLocalTime()
+                        : LastMessageTime.Value;
 
-                if (localDateTime.Date == today) return localDateTime.ToString("HH:mm");
-                if (today.Subtract(localDateTime.Date).TotalDays < 7) return localDateTime.ToString("ddd");
-                return localDateTime.ToString("yyyy/MM/dd");
+                    var today = DateTime.Now.Date;
+
+                    if (localDateTime.Date == today)
+                    {
+                        return localDateTime.ToString("HH:mm");
+                    }
+
+                    if (today.Subtract(localDateTime.Date).TotalDays < 7)
+                    {
+                        return localDateTime.ToString("ddd", new CultureInfo("fa-IR")); // استفاده از فرهنگ فارسی برای روزهای هفته
+                    }
+
+                    return localDateTime.ToString("yyyy/MM/dd");
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Error formatting LastMessageTime {LastMessageTime}: {ex.Message}");
+                    return LastMessageTime?.ToString("yyyy/MM/dd") ?? string.Empty;
+                }
             }
         }
     }

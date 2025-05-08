@@ -164,6 +164,37 @@ namespace Solvix.Client.MVVM.ViewModels
                 }
             }
 
+            // اطمینان از قالب‌بندی صحیح LastMessageTimeFormatted
+            if (chat.LastMessageTime.HasValue)
+            {
+                // محاسبه مجدد LastMessageTimeFormatted
+                var localDateTime = chat.LastMessageTime.Value;
+                var today = DateTime.Now.Date;
+
+                string formattedTime;
+                if (localDateTime.Date == today)
+                {
+                    formattedTime = localDateTime.ToString("HH:mm");
+                }
+                else if (today.Subtract(localDateTime.Date).TotalDays < 7)
+                {
+                    formattedTime = localDateTime.ToString("ddd");
+                }
+                else
+                {
+                    formattedTime = localDateTime.ToString("yyyy/MM/dd");
+                }
+
+                // بررسی کنیم اگر LastMessageTimeFormatted متفاوت است، آن را به‌روزرسانی کنیم
+                var currentProperty = chat.GetType().GetProperty("LastMessageTimeFormatted");
+                if (currentProperty != null && currentProperty.CanWrite)
+                {
+                    currentProperty.SetValue(chat, formattedTime);
+                }
+
+                _logger.LogDebug("Updated LastMessageTimeFormatted for chat {ChatId} to {FormattedTime}", chat.Id, formattedTime);
+            }
+
             // اطمینان از داشتن DisplayTitle
             if (string.IsNullOrEmpty(chat.DisplayTitle) && chat.OtherParticipant != null)
             {
@@ -270,35 +301,48 @@ namespace Solvix.Client.MVVM.ViewModels
 
             MainThread.BeginInvokeOnMainThread(async () =>
             {
-                // پیدا کردن چت مربوط به پیام
-                var chat = _allChats.FirstOrDefault(c => c.Id == message.ChatId);
-
-                if (chat != null)
+                try
                 {
-                    // به‌روزرسانی آخرین پیام
-                    chat.LastMessage = message.Content;
-                    chat.LastMessageTime = message.SentAt;
+                    // پیدا کردن چت مربوط به پیام
+                    var chat = _allChats.FirstOrDefault(c => c.Id == message.ChatId);
 
-                    // اگر پیام از طرف مقابل است و چت انتخاب نشده، تعداد پیام‌های نخوانده را افزایش دهیم
-                    if (message.SenderId != _currentUserId && (_selectedChat == null || _selectedChat.Id != chat.Id))
+                    if (chat != null)
                     {
-                        chat.UnreadCount++;
+                        // به‌روزرسانی آخرین پیام
+                        chat.LastMessage = message.Content;
+                        chat.LastMessageTime = message.SentAt;
+
+                        // اگر پیام از طرف مقابل است و چت انتخاب نشده، تعداد پیام‌های نخوانده را افزایش دهیم
+                        if (message.SenderId != _currentUserId && (_selectedChat == null || _selectedChat.Id != chat.Id))
+                        {
+                            chat.UnreadCount++;
+                        }
+
+                        _logger.LogDebug("Updated chat {ChatId} with new message data. LastMessage: {LastMessage}, LastMessageTime: {LastMessageTime}",
+                            chat.Id, chat.LastMessage?.Substring(0, Math.Min(20, chat.LastMessage?.Length ?? 0)), chat.LastMessageTime);
+
+                        // اطمینان از به‌روزرسانی زمان آخرین پیام
+                        if (chat.LastMessageTime == null || chat.LastMessageTime == default)
+                        {
+                            chat.LastMessageTime = DateTime.UtcNow;
+                        }
+
+                        // مرتب‌سازی مجدد چت‌ها بر اساس زمان آخرین پیام
+                        _allChats = _allChats.OrderByDescending(c => c.LastMessageTime ?? c.CreatedAt).ToList();
+
+                        // به‌روزرسانی لیست چت‌ها
+                        FilterChats();
                     }
-
-                    _logger.LogDebug("Updated chat {ChatId} with new message data. LastMessage: {LastMessage}, LastMessageTime: {LastMessageTime}",
-                        chat.Id, chat.LastMessage, chat.LastMessageTime);
-
-                    // مرتب‌سازی مجدد چت‌ها بر اساس زمان آخرین پیام
-                    _allChats = _allChats.OrderByDescending(c => c.LastMessageTime ?? c.CreatedAt).ToList();
-
-                    // به‌روزرسانی لیست چت‌ها
-                    FilterChats();
+                    else
+                    {
+                        // چت جدید است، باید لیست چت‌ها را به‌روزرسانی کنیم
+                        _logger.LogInformation("Received message for unknown chat {ChatId}. Refreshing chat list...", message.ChatId);
+                        await LoadChatsAsync(true);
+                    }
                 }
-                else
+                catch (Exception ex)
                 {
-                    // چت جدید است، باید لیست چت‌ها را به‌روزرسانی کنیم
-                    _logger.LogInformation("Received message for unknown chat {ChatId}. Refreshing chat list...", message.ChatId);
-                    await LoadChatsAsync(true);
+                    _logger.LogError(ex, "Error processing received message: {ErrorMessage}", ex.Message);
                 }
             });
         }
@@ -417,7 +461,7 @@ namespace Solvix.Client.MVVM.ViewModels
                 await InitializeSignalRAsync();
             }
 
-            await LoadChatsAsync();
+            await LoadChatsAsync(true); // همیشه یک به‌روزرسانی کامل انجام شود
         }
 
         public void Dispose()

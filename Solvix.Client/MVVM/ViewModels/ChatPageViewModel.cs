@@ -525,12 +525,20 @@ namespace Solvix.Client.MVVM.ViewModels
                     return;
                 }
 
+                // تنظیم طرف مقابل چت
                 if (!CurrentChat.IsGroup && CurrentChat.Participants != null && CurrentChat.Participants.Any())
                 {
                     CurrentChat.OtherParticipant = CurrentChat.Participants.FirstOrDefault(p => p.Id != _currentUserId);
                     _logger.LogInformation("Other participant set: {Name}", CurrentChat.OtherParticipant?.DisplayName ?? "Unknown");
+
+                    // اطمینان از داشتن اطلاعات آخرین بازدید
+                    if (CurrentChat.OtherParticipant != null && !CurrentChat.OtherParticipant.LastActive.HasValue)
+                    {
+                        CurrentChat.OtherParticipant.LastActive = DateTime.UtcNow.AddMinutes(-15); // مقدار پیش‌فرض
+                    }
                 }
 
+                // دریافت پیام‌های اولیه
                 var initialMessages = await _chatService.GetChatMessagesAsync(ActualChatId, 0, 30);
                 if (initialMessages != null)
                 {
