@@ -36,6 +36,12 @@ namespace Solvix.Client.Core.Models
                 if (!string.IsNullOrWhiteSpace(LastName) && LastName.Length > 0)
                     initials += LastName[0];
 
+                if (string.IsNullOrWhiteSpace(initials) && !string.IsNullOrWhiteSpace(Username) && Username.Length > 0)
+                    initials += Username[0];
+
+                if (string.IsNullOrWhiteSpace(initials) && !string.IsNullOrWhiteSpace(PhoneNumber) && PhoneNumber.Length > 0)
+                    initials += PhoneNumber[0];
+
                 return !string.IsNullOrWhiteSpace(initials) ? initials.ToUpper() : "?";
             }
         }

@@ -30,7 +30,35 @@ namespace Solvix.Client.Core.Services
             {
                 _logger.LogInformation("Fetching user chats...");
                 var chats = await _apiService.GetAsync<List<ChatModel>>(Constants.Endpoints.GetChats);
-                _logger.LogInformation("Fetched {Count} chats.", chats?.Count ?? 0);
+
+                if (chats != null && chats.Any())
+                {
+                    _logger.LogInformation("Fetched {Count} chats.", chats.Count);
+
+                    // اصلاح مقادیر پیش‌فرض برای چت‌ها
+                    foreach (var chat in chats)
+                    {
+                        // اگر LastMessage یا LastMessageTime خالی است، آن‌ها را به‌روزرسانی کنیم
+                        if (string.IsNullOrEmpty(chat.LastMessage) || !chat.LastMessageTime.HasValue)
+                        {
+                            // وقتی که پیام جدید ارسال شده اما هنوز در سرور ثبت نشده
+                            var initialMessages = await GetChatMessagesAsync(chat.Id, 0, 1);
+                            if (initialMessages != null && initialMessages.Any())
+                            {
+                                var lastMessage = initialMessages.OrderByDescending(m => m.SentAt).FirstOrDefault();
+                                if (lastMessage != null)
+                                {
+                                    chat.LastMessage = lastMessage.Content;
+                                    chat.LastMessageTime = lastMessage.SentAt;
+                                    _logger.LogDebug("Updated chat {ChatId} with last message from API: {Content}",
+                                        chat.Id,
+                                        chat.LastMessage?.Substring(0, Math.Min(20, chat.LastMessage?.Length ?? 0)));
+                                }
+                            }
+                        }
+                    }
+                }
+
                 return chats;
             }
             catch (Exception ex)

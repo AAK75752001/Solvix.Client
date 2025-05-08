@@ -134,52 +134,41 @@
         <!-- Chat Header - Fixed header similar to Telegram -->
         <Grid Grid.Row="0" Style="{StaticResource ChatHeaderStyle}" ColumnDefinitions="Auto,*,Auto">
             <Button Grid.Column="0" 
-                    Text="arrow_back"
-                    Command="{Binding GoBackCommand}"
-                    Style="{StaticResource BackButtonStyle}"/>
+            Text="arrow_back"
+            Command="{Binding GoBackCommand}"
+            Style="{StaticResource BackButtonStyle}"/>
 
             <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center" HorizontalOptions="Center">
                 <Label Text="{Binding CurrentChat.DisplayTitle}"
-                       FontSize="16"
-                       FontAttributes="Bold"
-                       TextColor="{DynamicResource PrimaryTextColor}"
-                       LineBreakMode="TailTruncation"
-                       HorizontalOptions="Center"
-                       HorizontalTextAlignment="Center"/>
-                <Label TextColor="{DynamicResource SecondaryTextColor}" 
-                       FontSize="12" 
-                       HorizontalOptions="Center"
-                       HorizontalTextAlignment="Center">
-                    <Label.Triggers>
-                        <DataTrigger TargetType="Label" 
-                                    Binding="{Binding CurrentChat.OtherParticipant.IsOnline}" 
-                                    Value="True">
-                            <Setter Property="Text" Value="آنلاین"/>
-                        </DataTrigger>
-                        <DataTrigger TargetType="Label" 
-                                    Binding="{Binding CurrentChat.OtherParticipant.IsOnline}" 
-                                    Value="False">
-                            <Setter Property="Text" Value="{Binding CurrentChat.OtherParticipant.LastActiveText}"/>
-                        </DataTrigger>
-                    </Label.Triggers>
-                </Label>
+               FontSize="16"
+               FontAttributes="Bold"
+               TextColor="{DynamicResource PrimaryTextColor}"
+               LineBreakMode="TailTruncation"
+               HorizontalOptions="Center"
+               HorizontalTextAlignment="Center"/>
+                <!-- آخرین بازدید رو اینجا نمایش میدیم -->
+                <Label Text="{Binding CurrentChat.OtherParticipant.LastActiveText}"
+               TextColor="{DynamicResource SecondaryTextColor}" 
+               FontSize="12" 
+               HorizontalOptions="Center"
+               HorizontalTextAlignment="Center"/>
             </VerticalStackLayout>
 
-            <!-- User Avatar -->
+            <!-- User Avatar - اصلاح شده برای نمایش حروف اول نام و نام خانوادگی -->
             <Border Grid.Column="2" 
-                    WidthRequest="40" HeightRequest="40" 
-                    BackgroundColor="{DynamicResource TertiaryColor}" 
-                    StrokeShape="RoundRectangle 20" 
-                    HorizontalOptions="End" 
-                    Margin="0,0,10,0">
+            WidthRequest="40" HeightRequest="40" 
+            BackgroundColor="{DynamicResource TertiaryColor}" 
+            StrokeShape="RoundRectangle 20" 
+            HorizontalOptions="End" 
+            Margin="0,0,10,0">
                 <Label Text="{Binding CurrentChat.OtherParticipant.Initials}"
-                       TextColor="{DynamicResource InverseTextColor}"
-                       FontSize="16"
-                       FontAttributes="Bold"
-                       HorizontalOptions="Center"
-                       VerticalOptions="Center"
-                       HorizontalTextAlignment="Center"
-                       VerticalTextAlignment="Center"/>
+               TextColor="{DynamicResource InverseTextColor}"
+               FontSize="16"
+               FontAttributes="Bold"
+               HorizontalOptions="Center"
+               VerticalOptions="Center"
+               HorizontalTextAlignment="Center"
+               VerticalTextAlignment="Center"/>
             </Border>
         </Grid>
 

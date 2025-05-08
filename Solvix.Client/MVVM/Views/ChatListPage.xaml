@@ -127,10 +127,6 @@
     </ContentPage.Resources>
 
     <ContentPage.ToolbarItems>
-        <ToolbarItem Text="جستجو"
-                     IconImageSource="{FontImageSource FontFamily=MaterialIcons, Glyph=search, Color={DynamicResource PrimaryTextColor}}"
-                     Command="{Binding SearchChatsCommand}"
-                     Order="Primary" Priority="0"/>
         <ToolbarItem Text="منو"
                      IconImageSource="{FontImageSource FontFamily=MaterialIcons, Glyph=menu, Color={DynamicResource PrimaryTextColor}}"
                      Command="{Binding GoToSettingsCommand}"

@@ -210,6 +210,14 @@ namespace Solvix.Client.MVVM.ViewModels
                     Messages.Add(message);
                 }
                 _logger.LogInformation("Added new message (ID: {MessageId}, CorrID: {CorrelationId}, IsOwn: {IsOwn}) to collection.", message.Id, message.CorrelationId, message.IsOwnMessage);
+
+                // به‌روزرسانی آخرین پیام در چت
+                if (CurrentChat != null)
+                {
+                    CurrentChat.LastMessage = message.Content;
+                    CurrentChat.LastMessageTime = message.SentAt;
+                    _logger.LogDebug("Updated CurrentChat LastMessage and LastMessageTime from new message.");
+                }
             }
         }
 

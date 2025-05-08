@@ -221,7 +221,17 @@ namespace Solvix.Client.Core.Services
 
         private void OnReceivedMessageHandler(MessageModel message)
         {
-            _logger.LogInformation("Message received from SignalR for chat {ChatId}", message.ChatId);
+            _logger.LogInformation("Message received from SignalR for chat {ChatId}, Content: {Content}",
+                message.ChatId,
+                message.Content?.Substring(0, Math.Min(20, message.Content?.Length ?? 0)));
+
+            // اطمینان از داشتن مقادیر صحیح در پیام
+            if (message.SentAt == default)
+            {
+                message.SentAt = DateTime.UtcNow;
+                _logger.LogWarning("Message {MessageId} had default SentAt, setting to current time", message.Id);
+            }
+
             OnMessageReceived?.Invoke(message);
         }
 
