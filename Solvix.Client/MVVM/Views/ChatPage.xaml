@@ -163,21 +163,22 @@
                 </Label>
             </VerticalStackLayout>
 
-            <!-- User Avatar with status indicator -->
-            <Grid Grid.Column="2" HeightRequest="40" WidthRequest="40" HorizontalOptions="End" Margin="0,0,10,0">
-                <Border Style="{StaticResource ProfileCircleStyle}">
-                    <Label Text="{Binding CurrentChat.OtherParticipant.Initials}"
-                           Style="{StaticResource InitialsLabelStyle}"/>
-                </Border>
-                <Border WidthRequest="12"
-                        HeightRequest="12"
-                        StrokeThickness="2"
-                        Stroke="{DynamicResource CardBackgroundColor}"
-                        BackgroundColor="{Binding CurrentChat.OtherParticipant.IsOnline, Converter={StaticResource StatusColorConverter}}"
-                        StrokeShape="RoundRectangle 6"
-                        HorizontalOptions="End"
-                        VerticalOptions="End"/>
-            </Grid>
+            <!-- User Avatar -->
+            <Border Grid.Column="2" 
+                    WidthRequest="40" HeightRequest="40" 
+                    BackgroundColor="{DynamicResource TertiaryColor}" 
+                    StrokeShape="RoundRectangle 20" 
+                    HorizontalOptions="End" 
+                    Margin="0,0,10,0">
+                <Label Text="{Binding CurrentChat.OtherParticipant.Initials}"
+                       TextColor="{DynamicResource InverseTextColor}"
+                       FontSize="16"
+                       FontAttributes="Bold"
+                       HorizontalOptions="Center"
+                       VerticalOptions="Center"
+                       HorizontalTextAlignment="Center"
+                       VerticalTextAlignment="Center"/>
+            </Border>
 
             <!-- Border for bottom shadow effect -->
             <BoxView Grid.ColumnSpan="3" HeightRequest="1" VerticalOptions="End" 

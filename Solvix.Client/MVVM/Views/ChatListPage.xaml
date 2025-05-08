@@ -164,15 +164,17 @@
                                         <Label Text="{Binding OtherParticipant.Initials}" Style="{StaticResource InitialsLabelStyle}"/>
                                     </Border>
                                     <Border Style="{StaticResource OnlineStatusIndicatorStyle}"
-                                               BackgroundColor="{Binding OtherParticipant.IsOnline, Converter={StaticResource OnlineStatusColorConverter}}"
-                                               IsVisible="{Binding IsGroup, Converter={toolkit:InvertedBoolConverter}}"/>
+                                           BackgroundColor="{Binding OtherParticipant.IsOnline, Converter={StaticResource OnlineStatusColorConverter}}"
+                                           IsVisible="{Binding IsGroup, Converter={StaticResource InverseBoolConverter}}"/>
                                 </Grid>
 
                                 <Label Grid.Row="0" Grid.Column="1" Text="{Binding DisplayTitle}" Style="{StaticResource ChatTitleStyle}" />
-                                <Label Grid.Row="1" Grid.Column="1" Text="{Binding LastMessage}" Style="{StaticResource LastMessageStyle}"/>
-                                <Label Grid.Row="0" Grid.Column="2" Text="{Binding LastMessageTime, Converter={StaticResource DateTimeFormatter}}" Style="{StaticResource TimestampStyle}" />
+                                <Label Grid.Row="1" Grid.Column="1" Text="{Binding LastMessage}" Style="{StaticResource LastMessageStyle}" 
+                                       LineBreakMode="TailTruncation" MaxLines="1"/>
+
+                                <Label Grid.Row="0" Grid.Column="2" Text="{Binding LastMessageTimeFormatted}" Style="{StaticResource TimestampStyle}" />
                                 <Border Grid.Row="1" Grid.Column="2" Style="{StaticResource UnreadBadgeStyle}"
-                                          IsVisible="{Binding UnreadCount, Converter={StaticResource IntToBoolConverter}}">
+                                      IsVisible="{Binding UnreadCount, Converter={StaticResource IntToBoolConverter}}">
                                     <Label Text="{Binding UnreadCount}" Style="{StaticResource UnreadCountLabelStyle}"/>
                                 </Border>
 

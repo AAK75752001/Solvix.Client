@@ -4,12 +4,11 @@ using Microsoft.Extensions.Logging;
 using Solvix.Client.Core.Interfaces;
 using Solvix.Client.Core.Models;
 using Solvix.Client.MVVM.Views;
-using System; // اطمینان از وجود using برای Guid, Exception, DateTime
+using System;
 using System.Collections.ObjectModel;
 using System.Linq;
-using System.Threading; // Required for CancellationTokenSource
+using System.Threading;
 using System.Threading.Tasks;
-
 
 namespace Solvix.Client.MVVM.ViewModels
 {
@@ -22,7 +21,6 @@ namespace Solvix.Client.MVVM.ViewModels
         private readonly ILogger<NewChatViewModel> _logger;
         private long _currentUserId;
         private CancellationTokenSource? _searchDebounceCts;
-
 
         [ObservableProperty]
         private ObservableCollection<UserModel> _onlineUsersCache = new();
@@ -39,6 +37,9 @@ namespace Solvix.Client.MVVM.ViewModels
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(HasSearchQuery))]
         private bool _hasPerformedSearch = false;
+
+        [ObservableProperty]
+        private string _searchHeaderText = "کاربران یافت شده";
 
         public bool HasSearchQuery => !string.IsNullOrWhiteSpace(SearchQuery);
 
@@ -77,7 +78,6 @@ namespace Solvix.Client.MVVM.ViewModels
             }
         }
 
-
         public async Task LoadDataAsync()
         {
             if (IsLoading) return;
@@ -99,6 +99,7 @@ namespace Solvix.Client.MVVM.ViewModels
                 {
                     OnlineUsersCache = new ObservableCollection<UserModel>(onlineUsersList.Where(u => u.Id != _currentUserId));
                     _logger.LogInformation("{Count} کاربر آنلاین (به جز کاربر فعلی) یافت شد", OnlineUsersCache.Count);
+                    SearchHeaderText = "کاربران آنلاین";
                 }
                 else
                 {
@@ -151,12 +152,14 @@ namespace Solvix.Client.MVVM.ViewModels
             {
                 HasPerformedSearch = false;
                 FilteredUsers = new ObservableCollection<UserModel>(OnlineUsersCache);
+                SearchHeaderText = "کاربران آنلاین";
                 _logger.LogInformation("نمایش لیست کاربران آنلاین اولیه (فیلتر شده).");
             }
             else
             {
                 _logger.LogInformation("جستجوی کاربران با عبارت: {Query}", SearchQuery);
                 HasPerformedSearch = true;
+                SearchHeaderText = "نتایج جستجو";
                 try
                 {
                     var usersFromServer = await _userService.SearchUsersAsync(SearchQuery);
@@ -180,7 +183,6 @@ namespace Solvix.Client.MVVM.ViewModels
             }
             IsLoading = false;
         }
-
 
         [RelayCommand]
         private async Task SearchAsync()

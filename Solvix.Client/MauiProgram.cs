@@ -4,6 +4,7 @@ using Solvix.Client.Core.Interfaces;
 using Solvix.Client.Core.Services;
 using Solvix.Client.MVVM.ViewModels;
 using Solvix.Client.MVVM.Views;
+using Solvix.Client.Core.Converters;
 
 namespace Solvix.Client
 {
@@ -48,6 +49,9 @@ namespace Solvix.Client
 
             // Register views
             RegisterViews(builder.Services);
+
+            // Register converters
+            RegisterConverters();
 
             return builder.Build();
         }
@@ -101,6 +105,14 @@ namespace Solvix.Client
 
             // Main views
 
+        }
+
+        private static void RegisterConverters()
+        {
+            if (Application.Current?.Resources == null) return;
+
+            // اضافه کردن Converter جدید به منابع برنامه
+            Application.Current.Resources.Add("ConnectionHeaderTextConverter", new ConnectionStateTitleConverter());
         }
     }
 }

@@ -113,12 +113,12 @@
                                VerticalOptions="Center"
                                Color="{DynamicResource PrimaryColor}"/>
 
-            <!-- Online users section -->
+            <!-- User section header - نتایج جستجو به جای کاربران آنلاین -->
             <VerticalStackLayout Grid.Row="0" 
                                  IsVisible="{Binding IsLoading, Converter={StaticResource InverseBoolConverter}}">
-                <Label Text="کاربران آنلاین" 
+                <Label Text="{Binding SearchHeaderText}" 
                        Style="{StaticResource SectionHeaderStyle}"
-                       IsVisible="{Binding OnlineUsers.Count, Converter={StaticResource IntToBoolConverter}}"/>
+                       IsVisible="{Binding FilteredUsers.Count, Converter={StaticResource IntToBoolConverter}}"/>
             </VerticalStackLayout>
 
             <!-- Users list -->

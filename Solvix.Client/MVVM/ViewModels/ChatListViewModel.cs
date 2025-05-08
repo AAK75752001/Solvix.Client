@@ -98,11 +98,15 @@ namespace Solvix.Client.MVVM.ViewModels
 
                 if (chatList != null)
                 {
+                    // مرتب‌سازی چت‌ها بر اساس زمان آخرین پیام
                     _allChats = chatList.OrderByDescending(c => c.LastMessageTime ?? c.CreatedAt).ToList();
 
                     foreach (var chat in _allChats)
                     {
                         CalculateOtherParticipant(chat, _currentUserId);
+
+                        // اطمینان از داشتن مقادیر معتبر برای LastMessage و LastMessageTime
+                        EnsureChatProperties(chat);
                     }
 
                     FilterChats();
@@ -123,6 +127,49 @@ namespace Solvix.Client.MVVM.ViewModels
             {
                 IsLoading = false;
                 IsRefreshing = false;
+            }
+        }
+
+        // اطمینان از داشتن مقادیر معتبر برای LastMessage و LastMessageTime
+        private void EnsureChatProperties(ChatModel chat)
+        {
+            // اگر LastMessage و LastMessageTime وجود نداشته باشند، مقادیر پیش‌فرض تنظیم می‌کنیم
+            if (string.IsNullOrEmpty(chat.LastMessage))
+            {
+                if (chat.Messages != null && chat.Messages.Any())
+                {
+                    var lastMsg = chat.Messages.OrderByDescending(m => m.SentAt).FirstOrDefault();
+                    if (lastMsg != null)
+                    {
+                        chat.LastMessage = lastMsg.Content;
+                        chat.LastMessageTime = lastMsg.SentAt;
+                        _logger.LogDebug("Fixed missing LastMessage for chat {ChatId} from Messages collection", chat.Id);
+                    }
+                }
+                else
+                {
+                    // اگر پیامی نیست، یک مقدار پیش‌فرض تنظیم می‌کنیم
+                    if (string.IsNullOrEmpty(chat.LastMessage))
+                    {
+                        chat.LastMessage = "آغاز گفتگو";
+                        _logger.LogDebug("Set default LastMessage for chat {ChatId}", chat.Id);
+                    }
+
+                    // اگر زمان آخرین پیام وجود ندارد، از زمان ایجاد چت استفاده می‌کنیم
+                    if (!chat.LastMessageTime.HasValue)
+                    {
+                        chat.LastMessageTime = chat.CreatedAt;
+                        _logger.LogDebug("Set default LastMessageTime for chat {ChatId}", chat.Id);
+                    }
+                }
+            }
+
+            // اطمینان از داشتن DisplayTitle
+            if (string.IsNullOrEmpty(chat.DisplayTitle) && chat.OtherParticipant != null)
+            {
+                // DisplayTitle یک پراپرتی calculated است، اما اطمینان حاصل می‌کنیم که 
+                // OtherParticipant تنظیم شده باشد تا DisplayTitle مقدار درستی داشته باشد
+                _logger.LogDebug("OtherParticipant set for chat {ChatId}: {Name}", chat.Id, chat.OtherParticipant.DisplayName);
             }
         }
 
@@ -238,7 +285,8 @@ namespace Solvix.Client.MVVM.ViewModels
                         chat.UnreadCount++;
                     }
 
-                    _logger.LogDebug("Updated chat {ChatId} with new message data", chat.Id);
+                    _logger.LogDebug("Updated chat {ChatId} with new message data. LastMessage: {LastMessage}, LastMessageTime: {LastMessageTime}",
+                        chat.Id, chat.LastMessage, chat.LastMessageTime);
 
                     // به‌روزرسانی لیست چت‌ها
                     FilterChats();
