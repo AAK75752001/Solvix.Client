@@ -11,8 +11,9 @@ namespace Solvix.Client.Core.Services
 
         // For development purposes, override connectivity state
         // This will ensure the app attempts to connect even if connectivity check fails
-        private bool _forceConnected = true;
-
+#if DEBUG
+        private bool _forceConnected = true; // Only for debug builds
+#endif
         public bool IsConnected
         {
             get
@@ -56,6 +57,20 @@ namespace Solvix.Client.Core.Services
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error initializing ConnectivityService");
+            }
+        }
+
+        public async Task<bool> TestConnectivityAsync(string testUrl = null)
+        {
+            try
+            {
+                using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                var response = await httpClient.GetAsync(testUrl ?? Constants.BaseApiUrl + "/health");
+                return response.IsSuccessStatusCode;
+            }
+            catch
+            {
+                return false;
             }
         }
 

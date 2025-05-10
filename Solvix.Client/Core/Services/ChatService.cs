@@ -14,6 +14,12 @@ namespace Solvix.Client.Core.Services
         private readonly ILogger<ChatService> _logger;
         private readonly IToastService _toastService;
 
+        // Cache for chats and messages
+        private readonly Dictionary<Guid, ChatModel> _chatsCache = new();
+        private readonly Dictionary<Guid, List<MessageModel>> _messagesCache = new();
+        private DateTime? _lastChatsRefreshTime;
+        private readonly TimeSpan _cacheExpiration = TimeSpan.FromMinutes(5);
+
         public ChatService(
             IApiService apiService,
             ILogger<ChatService> logger,
@@ -24,69 +30,81 @@ namespace Solvix.Client.Core.Services
             _toastService = toastService;
         }
 
-        public async Task<List<ChatModel>?> GetUserChatsAsync()
+        public async Task<List<ChatModel>?> GetUserChatsAsync(bool forceRefresh = false)
         {
             try
             {
-                _logger.LogInformation("Fetching user chats...");
+                // Check cache validity
+                if (!forceRefresh && _lastChatsRefreshTime.HasValue &&
+                    DateTime.UtcNow - _lastChatsRefreshTime.Value < _cacheExpiration &&
+                    _chatsCache.Any())
+                {
+                    _logger.LogInformation("Returning {Count} chats from cache", _chatsCache.Count);
+                    return _chatsCache.Values.ToList();
+                }
+
+                _logger.LogInformation("Fetching user chats from server...");
                 var chats = await _apiService.GetAsync<List<ChatModel>>(Constants.Endpoints.GetChats);
 
                 if (chats != null && chats.Any())
                 {
-                    _logger.LogInformation("Fetched {Count} chats.", chats.Count);
+                    _logger.LogInformation("Fetched {Count} chats from server", chats.Count);
 
-                    // اصلاح مقادیر پیش‌فرض برای چت‌ها
+                    // Update cache
+                    _chatsCache.Clear();
                     foreach (var chat in chats)
                     {
-                        // اگر LastMessage یا LastMessageTime خالی است، آن‌ها را به‌روزرسانی کنیم
-                        if (string.IsNullOrEmpty(chat.LastMessage) || !chat.LastMessageTime.HasValue)
-                        {
-                            // وقتی که پیام جدید ارسال شده اما هنوز در سرور ثبت نشده
-                            var initialMessages = await GetChatMessagesAsync(chat.Id, 0, 1);
-                            if (initialMessages != null && initialMessages.Any())
-                            {
-                                var lastMessage = initialMessages.OrderByDescending(m => m.SentAt).FirstOrDefault();
-                                if (lastMessage != null)
-                                {
-                                    chat.LastMessage = lastMessage.Content;
-                                    chat.LastMessageTime = lastMessage.SentAt;
-                                    _logger.LogDebug("Updated chat {ChatId} with last message from API: {Content}",
-                                        chat.Id,
-                                        chat.LastMessage?.Substring(0, Math.Min(20, chat.LastMessage?.Length ?? 0)));
-                                }
-                            }
-                        }
+                        _chatsCache[chat.Id] = chat;
                     }
+                    _lastChatsRefreshTime = DateTime.UtcNow;
+
+                    return chats;
                 }
 
                 return chats;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error fetching user chats.");
+                _logger.LogError(ex, "Error fetching user chats");
                 await _toastService.ShowToastAsync("خطا در دریافت لیست چت‌ها", ToastType.Error);
+
+                // Return cached data if available
+                if (_chatsCache.Any())
+                {
+                    return _chatsCache.Values.ToList();
+                }
+
                 return null;
             }
         }
 
-        public async Task<List<MessageModel>?> GetChatMessagesAsync(Guid chatId, int skip = 0, int take = 50)
+        public async Task<List<MessageModel>?> GetChatMessagesAsync(Guid chatId, int skip = 0, int take = 50, bool forceRefresh = false)
         {
             try
             {
+                // Check cache for initial load
+                if (!forceRefresh && skip == 0 && _messagesCache.TryGetValue(chatId, out var cachedMessages))
+                {
+                    _logger.LogInformation("Returning {Count} messages from cache for chat {ChatId}",
+                        cachedMessages.Count, chatId);
+                    return cachedMessages.Take(take).ToList();
+                }
+
                 string endpoint = $"{Constants.Endpoints.GetMessages}/{chatId}/messages";
                 var queryParams = new Dictionary<string, string>
-                {
-                    { "skip", skip.ToString() },
-                    { "take", take.ToString() }
-                };
+            {
+                { "skip", skip.ToString() },
+                { "take", take.ToString() }
+            };
 
-                _logger.LogInformation("Fetching messages for chat {ChatId} (Skip: {Skip}, Take: {Take})...",
-                    chatId, skip, take);
-
+                _logger.LogInformation("Fetching messages for chat {ChatId} from server...", chatId);
                 var messages = await _apiService.GetAsync<List<MessageModel>>(endpoint, queryParams);
 
-                _logger.LogInformation("Fetched {Count} messages for chat {ChatId}.",
-                    messages?.Count ?? 0, chatId);
+                // Update cache for initial load
+                if (messages != null && skip == 0)
+                {
+                    _messagesCache[chatId] = messages;
+                }
 
                 return messages;
             }
@@ -95,6 +113,46 @@ namespace Solvix.Client.Core.Services
                 _logger.LogError(ex, "Error fetching messages for chat {ChatId}", chatId);
                 await _toastService.ShowToastAsync("خطا در دریافت پیام‌های چت", ToastType.Error);
                 return null;
+            }
+        }
+
+
+        // Method to update cache when new message arrives
+        public void UpdateMessageCache(MessageModel message)
+        {
+            if (_messagesCache.TryGetValue(message.ChatId, out var messages))
+            {
+                var existingMessage = messages.FirstOrDefault(m => m.Id == message.Id);
+                if (existingMessage == null)
+                {
+                    messages.Add(message);
+                    messages.Sort((a, b) => a.SentAt.CompareTo(b.SentAt));
+                }
+                else
+                {
+                    // Update existing message
+                    existingMessage.Content = message.Content;
+                    existingMessage.Status = message.Status;
+                    existingMessage.IsRead = message.IsRead;
+                    existingMessage.ReadAt = message.ReadAt;
+                }
+            }
+        }
+
+
+        // Method to invalidate cache
+        public void InvalidateCache(Guid? chatId = null)
+        {
+            if (chatId.HasValue)
+            {
+                _chatsCache.Remove(chatId.Value);
+                _messagesCache.Remove(chatId.Value);
+            }
+            else
+            {
+                _chatsCache.Clear();
+                _messagesCache.Clear();
+                _lastChatsRefreshTime = null;
             }
         }
 

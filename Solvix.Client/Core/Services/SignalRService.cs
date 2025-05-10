@@ -31,6 +31,16 @@ namespace Solvix.Client.Core.Services
         public event Action<string, int>? OnMessageCorrelationConfirmation;
 
         public bool IsConnected => _hubConnection?.State == HubConnectionState.Connected;
+        private int _reconnectAttempts = 0;
+        private readonly int _maxReconnectAttempts = 5;
+        private readonly TimeSpan[] _reconnectDelays = new[]
+        {
+        TimeSpan.FromSeconds(2),
+        TimeSpan.FromSeconds(5),
+        TimeSpan.FromSeconds(10),
+        TimeSpan.FromSeconds(30),
+        TimeSpan.FromSeconds(60)
+    };
 
         public SignalRService(
             ILogger<SignalRService> logger,
@@ -272,21 +282,45 @@ namespace Solvix.Client.Core.Services
             }
             else
             {
-                _logger.LogInformation("SignalR connection closed without error");
+                _logger.LogInformation("SignalR connection closed normally");
             }
 
             if (_autoReconnect && !_isDisposed && _connectivityService.IsConnected)
             {
-                _logger.LogInformation("Attempting to reconnect to SignalR...");
+                await ReconnectWithBackoffAsync();
+            }
+        }
+
+
+        private async Task ReconnectWithBackoffAsync()
+        {
+            while (_reconnectAttempts < _maxReconnectAttempts && !_isDisposed)
+            {
+                var delay = _reconnectDelays[Math.Min(_reconnectAttempts, _reconnectDelays.Length - 1)];
+                _logger.LogInformation("Attempting to reconnect (attempt {Attempt}/{Max}) after {Delay} seconds",
+                    _reconnectAttempts + 1, _maxReconnectAttempts, delay.TotalSeconds);
+
+                await Task.Delay(delay);
+
+                if (_isDisposed) return;
+
                 try
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(3));
                     await StartAsync();
+                    _reconnectAttempts = 0; // Reset on successful connection
+                    return;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Error reconnecting to SignalR");
+                    _logger.LogError(ex, "Reconnection attempt {Attempt} failed", _reconnectAttempts + 1);
+                    _reconnectAttempts++;
                 }
+            }
+
+            if (_reconnectAttempts >= _maxReconnectAttempts)
+            {
+                _logger.LogError("Max reconnection attempts reached. Connection failed.");
+                await _toastService.ShowToastAsync("اتصال به سرور برقرار نشد. لطفاً بعداً تلاش کنید.", ToastType.Error);
             }
         }
 

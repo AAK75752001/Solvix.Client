@@ -20,6 +20,9 @@ namespace Solvix.Client.MVVM.ViewModels
         private readonly ILogger<ChatListViewModel> _logger;
         private bool _isDisposed = false;
         private long _currentUserId;
+        private DateTime? _lastRefreshTime;
+        private readonly TimeSpan _refreshThreshold = TimeSpan.FromSeconds(30);
+        private bool _isFirstLoad = true;
 
         private List<ChatModel> _allChats = new();
 
@@ -470,15 +473,29 @@ namespace Solvix.Client.MVVM.ViewModels
 
         public async Task OnAppearingAsync()
         {
-            _logger.LogInformation("ChatListPage appearing. Loading chats...");
+            _logger.LogInformation("ChatListPage appearing");
 
-            // تلاش برای اتصال به SignalR
+            // Only auto-refresh if it's the first load or enough time has passed
+            bool shouldRefresh = _isFirstLoad ||
+                !_lastRefreshTime.HasValue ||
+                (DateTime.UtcNow - _lastRefreshTime.Value) > _refreshThreshold;
+
+            if (shouldRefresh)
+            {
+                await LoadChatsAsync(forceRefresh: true);
+                _isFirstLoad = false;
+                _lastRefreshTime = DateTime.UtcNow;
+            }
+            else
+            {
+                _logger.LogInformation("Skipping auto-refresh, using cached data");
+            }
+
+            // Always try to connect SignalR if not connected
             if (!_signalRService.IsConnected)
             {
                 await InitializeSignalRAsync();
             }
-
-            await LoadChatsAsync(true); // همیشه یک به‌روزرسانی کامل انجام شود
         }
 
         public void Dispose()

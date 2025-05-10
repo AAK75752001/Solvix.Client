@@ -7,7 +7,8 @@ public partial class ChatPage : ContentPage
 {
     private readonly ChatPageViewModel _viewModel;
     private CancellationTokenSource? _typingCancellationTokenSource;
-    private readonly IDispatcherTimer _typingTimer;
+    private bool _isTyping = false;
+    private DateTime _lastTypingTime = DateTime.MinValue;
     private bool _disposed = false;
 
     public ChatPage(ChatPageViewModel viewModel)
@@ -16,10 +17,6 @@ public partial class ChatPage : ContentPage
         _viewModel = viewModel;
         BindingContext = _viewModel;
 
-        // ایجاد تایمر برای تشخیص وقفه در تایپ کردن
-        _typingTimer = Dispatcher.CreateTimer();
-        _typingTimer.Interval = TimeSpan.FromSeconds(2);
-        _typingTimer.Tick += OnTypingTimerTick;
     }
 
     protected override void OnAppearing()
@@ -36,19 +33,21 @@ public partial class ChatPage : ContentPage
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
+        _disposed = true;
 
-        // در صورت خروج از صفحه، وضعیت تایپ را به پایان می‌رسانیم
-        StopTypingTimer();
-
-        // رویداد TextChanged را حذف می‌کنیم
-        if (this.FindByName("MessageEditor") is Editor messageEditor)
+        // Ensure typing status is reset
+        if (_isTyping)
         {
-            messageEditor.TextChanged -= OnMessageTextChanged;
+            _viewModel.UpdateTypingStatusAsync(false).ConfigureAwait(false);
+            _isTyping = false;
         }
 
-        // منابع را آزاد می‌کنیم
-        Dispose();
+        // Clean up
+        _typingCancellationTokenSource?.Cancel();
+        _typingCancellationTokenSource?.Dispose();
+        _typingCancellationTokenSource = null;
     }
+
 
     private void OnRemainingItemsThresholdReached(object sender, EventArgs e)
     {
@@ -60,18 +59,52 @@ public partial class ChatPage : ContentPage
 
     private async void OnMessageTextChanged(object sender, TextChangedEventArgs e)
     {
-        // اگر متن خالی شده، وضعیت تایپ را به پایان می‌رسانیم
-        if (string.IsNullOrEmpty(e.NewTextValue))
-        {
-            StopTypingTimer();
-            await _viewModel.UpdateTypingStatusAsync(false);
-            return;
-        }
+        if (_disposed) return;
 
-        // اگر تغییری در متن ایجاد شده، تایمر را ریست می‌کنیم
-        if (e.OldTextValue != e.NewTextValue)
+        // Cancel previous typing detection
+        _typingCancellationTokenSource?.Cancel();
+        _typingCancellationTokenSource?.Dispose();
+        _typingCancellationTokenSource = new CancellationTokenSource();
+        var token = _typingCancellationTokenSource.Token;
+
+        try
         {
-            RestartTypingTimer();
+            // Check if text is empty
+            if (string.IsNullOrEmpty(e.NewTextValue))
+            {
+                if (_isTyping)
+                {
+                    await _viewModel.UpdateTypingStatusAsync(false);
+                    _isTyping = false;
+                }
+                return;
+            }
+
+            // Only send typing status if not already typing or if enough time has passed
+            var now = DateTime.UtcNow;
+            if (!_isTyping || (now - _lastTypingTime).TotalSeconds > 3)
+            {
+                _isTyping = true;
+                _lastTypingTime = now;
+                await _viewModel.UpdateTypingStatusAsync(true);
+            }
+
+            // Wait for 2 seconds of inactivity before sending "stopped typing"
+            await Task.Delay(2000, token);
+
+            if (!token.IsCancellationRequested && _isTyping)
+            {
+                _isTyping = false;
+                await _viewModel.UpdateTypingStatusAsync(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when typing continues
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error handling typing status");
         }
     }
 
