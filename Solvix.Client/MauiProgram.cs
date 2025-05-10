@@ -18,104 +18,51 @@ namespace Solvix.Client
                 .UseMauiCommunityToolkit()
                 .ConfigureFonts(fonts =>
                 {
-                    fonts.AddFont("Segoe UI", "SegoeUI");
-
-                    try
-                    {
-                        fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
-                        fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
-                        fonts.AddFont("MaterialIcons-Regular.ttf", "MaterialIcons");
-                        fonts.AddFont("Vazir.ttf", "Vazirmatn");
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"Error loading OpenSans fonts: {ex.Message}");
-                    }
+                    fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
+                    fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
+                    fonts.AddFont("MaterialIcons-Regular.ttf", "MaterialIcons");
+                    fonts.AddFont("Vazir.ttf", "Vazirmatn");
                 });
 
-            // Add logging
 #if DEBUG
             builder.Logging.AddDebug();
             builder.Logging.SetMinimumLevel(LogLevel.Debug);
-#else
-            builder.Logging.SetMinimumLevel(LogLevel.Information);
 #endif
 
-            // Register services
-            RegisterServices(builder.Services);
+            // Register all services
+            builder.Services.AddSingleton<ISecureStorageService, SecureStorageService>();
+            builder.Services.AddSingleton<IConnectivityService, ConnectivityService>();
+            builder.Services.AddSingleton<IToastService, ImprovedToastService>();
+            builder.Services.AddSingleton<IThemeService, ThemeService>();
+            builder.Services.AddSingleton<ITokenManager, TokenManager>();
+            builder.Services.AddSingleton<IAuthService, AuthService>();
+            builder.Services.AddSingleton<ISignalRService, SignalRService>();
+            builder.Services.AddSingleton<IApiService, ApiService>();
+            builder.Services.AddSingleton<IChatService, ChatService>();
+            builder.Services.AddSingleton<IUserService, UserService>();
+            builder.Services.AddSingleton<INavigationService, NavigationService>();
 
-            // Register view models
-            RegisterViewModels(builder.Services);
+            // Register ViewModels
+            builder.Services.AddTransient<LoginViewModel>();
+            builder.Services.AddTransient<ChatListViewModel>();
+            builder.Services.AddTransient<ChatPageViewModel>();
+            builder.Services.AddTransient<SettingsViewModel>();
+            builder.Services.AddTransient<NewChatViewModel>();
 
-            // Register views
-            RegisterViews(builder.Services);
+            // Register Views
+            builder.Services.AddTransient<LoginPage>();
+            builder.Services.AddTransient<ChatListPage>();
+            builder.Services.AddTransient<ChatPage>();
+            builder.Services.AddTransient<SettingsPage>();
+            builder.Services.AddTransient<NewChatPage>();
 
-            // Register converters
-            RegisterConverters();
+            var app = builder.Build();
 
-            return builder.Build();
-        }
+            // Initialize theme service after build
+            var themeService = app.Services.GetService<IThemeService>();
+            themeService?.LoadSavedTheme();
 
-        private static void RegisterServices(IServiceCollection services)
-        {
-            // Core services
-            services.AddSingleton<ISecureStorageService, SecureStorageService>();
-            services.AddSingleton<IConnectivityService, ConnectivityService>();
-            services.AddSingleton<IToastService, ImprovedToastService>();
-            services.AddSingleton<INavigationService, NavigationService>();
-            services.AddSingleton<IChatService, ChatService>();
-
-            // Theme service
-            services.AddSingleton<IThemeService, ThemeService>();
-
-            // Authentication & Security
-            services.AddSingleton<ITokenManager, TokenManager>();
-            services.AddSingleton<IAuthService, AuthService>();
-
-            // Real-time communication
-            services.AddSingleton<ISignalRService, SignalRService>();
-
-            // API-related services
-            services.AddSingleton<IApiService, ApiService>();
-
-            // Domain services
-            services.AddSingleton<IUserService, UserService>();
-        }
-
-        private static void RegisterViewModels(IServiceCollection services)
-        {
-            // Auth view models
-            services.AddTransient<LoginViewModel>();
-            services.AddTransient<ChatListViewModel>();
-            services.AddTransient<ChatPageViewModel>();
-            services.AddTransient<SettingsViewModel>();
-            services.AddTransient<NewChatViewModel>();
-
-
-            // Main view models
-
-        }
-
-        private static void RegisterViews(IServiceCollection services)
-        {
-            // Auth views
-            services.AddTransient<LoginPage>();
-            services.AddTransient<ChatListPage>();
-            services.AddTransient<ChatPage>();
-            services.AddTransient<SettingsPage>();
-            services.AddTransient<NewChatPage>();
-
-
-            // Main views
-
-        }
-
-        private static void RegisterConverters()
-        {
-            if (Application.Current?.Resources == null) return;
-
-            // اضافه کردن Converter جدید به منابع برنامه
-            Application.Current.Resources.Add("ConnectionHeaderTextConverter", new ConnectionStateTitleConverter());
+            return app;
         }
     }
 }

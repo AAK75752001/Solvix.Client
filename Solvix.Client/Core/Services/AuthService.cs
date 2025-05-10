@@ -153,7 +153,15 @@ namespace Solvix.Client.Core.Services
 
         public bool IsLoggedIn()
         {
-            return _tokenManager.GetTokenAsync().Result != null;
+            try
+            {
+                var token = _tokenManager.GetTokenAsync().GetAwaiter().GetResult();
+                return !string.IsNullOrEmpty(token) && _tokenManager.IsTokenValidAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                return false;
+            }
         }
 
         public async Task LogoutAsync()

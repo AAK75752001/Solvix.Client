@@ -1,0 +1,50 @@
+﻿<?xml version="1.0" encoding="UTF-8" ?>
+<ResourceDictionary 
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    x:Class="Solvix.Client.Resources.Themes.SolvixThemeResources">
+
+    <!-- App Theme Colors -->
+    <Color x:Key="PrimaryColor">#6200EA</Color>
+    <Color x:Key="SecondaryColor">#00C4B4</Color>
+    <Color x:Key="TertiaryColor">#4A0ABF</Color>
+    <Color x:Key="AccentColor">#FF5E76</Color>
+
+    <!-- Background Colors -->
+    <Color x:Key="PageBackgroundColor">#F8F9FC</Color>
+    <Color x:Key="CardBackgroundColor">#FFFFFF</Color>
+    <Color x:Key="FrameBorderColor">#EAEEF8</Color>
+
+    <!-- Text Colors -->
+    <Color x:Key="PrimaryTextColor">#101C3D</Color>
+    <Color x:Key="SecondaryTextColor">#4A5578</Color>
+    <Color x:Key="TertiaryTextColor">#8D93A8</Color>
+    <Color x:Key="InverseTextColor">#FFFFFF</Color>
+
+    <!-- Status Colors -->
+    <Color x:Key="SuccessColor">#00C48C</Color>
+    <Color x:Key="ErrorColor">#FF5E5E</Color>
+    <Color x:Key="WarningColor">#FFBD3D</Color>
+    <Color x:Key="InfoColor">#3E7BFA</Color>
+
+    <!-- Message Bubble Colors -->
+    <Color x:Key="SentMessageBubbleColor">#EFECFF</Color>
+    <Color x:Key="ReceivedMessageBubbleColor">#F2F5FC</Color>
+    <Color x:Key="SentMessageTextColor">#4A0ABF</Color>
+    <Color x:Key="ReceivedMessageTextColor">#101C3D</Color>
+
+    <!-- Online Status Colors -->
+    <Color x:Key="OnlineStatusColor">#00C48C</Color>
+    <Color x:Key="OfflineStatusColor">#CACDD8</Color>
+
+    <!-- Gradient Colors -->
+    <Color x:Key="GradientStart">#8A2BE2</Color>
+    <Color x:Key="GradientMiddle">#FF00FF</Color>
+    <Color x:Key="GradientEnd">#00FFFF</Color>
+
+    <!-- Shadow Colors -->
+    <Color x:Key="ShadowColor">#22000000</Color>
+
+    <!-- Additional UI Colors -->
+    <Color x:Key="SeparatorColor">#EEEEEE</Color>
+</ResourceDictionary>
