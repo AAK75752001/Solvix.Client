@@ -32,6 +32,8 @@ namespace Solvix.Client.MVVM.ViewModels
         private readonly SemaphoreSlim _initializeSemaphore = new(1, 1);
         private CancellationTokenSource? _loadMessagesCts;
         private Task? _initializationTask;
+        private bool _isSignalRSubscribed = false;
+        private readonly object _signalRLock = new object();
 
         [ObservableProperty]
         private ObservableCollection<MessageModel> _messages = new();
@@ -150,14 +152,46 @@ namespace Solvix.Client.MVVM.ViewModels
             _signalRService = signalRService;
             _logger = logger;
 
-            _signalRService.OnMessageReceived += SignalRMessageReceived;
-            _signalRService.OnMessageStatusUpdated += SignalRMessageStatusUpdated;
-            _signalRService.OnConnectionStateChanged += SignalRConnectionStateChanged;
-            _signalRService.OnUserTyping += SignalRUserTyping;
-            _signalRService.OnMessageCorrelationConfirmation += SignalRMessageCorrelationConfirmation;
-
+            SubscribeToSignalREvents();
             IsConnected = _signalRService.IsConnected;
         }
+
+
+        private void SubscribeToSignalREvents()
+        {
+            lock (_signalRLock)
+            {
+                if (_isSignalRSubscribed) return;
+
+                _signalRService.OnMessageReceived += SignalRMessageReceived;
+                _signalRService.OnMessageStatusUpdated += SignalRMessageStatusUpdated;
+                _signalRService.OnConnectionStateChanged += SignalRConnectionStateChanged;
+                _signalRService.OnUserTyping += SignalRUserTyping;
+                _signalRService.OnMessageCorrelationConfirmation += SignalRMessageCorrelationConfirmation;
+
+                _isSignalRSubscribed = true;
+            }
+        }
+
+
+        private void UnsubscribeFromSignalREvents()
+        {
+            lock (_signalRLock)
+            {
+                if (!_isSignalRSubscribed) return;
+
+                _signalRService.OnMessageReceived -= SignalRMessageReceived;
+                _signalRService.OnMessageStatusUpdated -= SignalRMessageStatusUpdated;
+                _signalRService.OnConnectionStateChanged -= SignalRConnectionStateChanged;
+                _signalRService.OnUserTyping -= SignalRUserTyping;
+                _signalRService.OnMessageCorrelationConfirmation -= SignalRMessageCorrelationConfirmation;
+
+                _isSignalRSubscribed = false;
+            }
+        }
+
+
+
 
         [RelayCommand]
         private async Task GoBackAsync()
@@ -230,7 +264,8 @@ namespace Solvix.Client.MVVM.ViewModels
             var messageContentToSend = NewMessageText?.Trim();
             if (string.IsNullOrWhiteSpace(messageContentToSend) || ActualChatId == Guid.Empty || _currentUserId == 0)
             {
-                _logger.LogWarning("Cannot send message. Content: {Content}, ChatId: {ChatId}, CurrentUserId: {UserId}", messageContentToSend, ActualChatId, _currentUserId);
+                _logger.LogWarning("Cannot send message. Content: {Content}, ChatId: {ChatId}, CurrentUserId: {UserId}",
+                    messageContentToSend, ActualChatId, _currentUserId);
                 return;
             }
 
@@ -261,7 +296,24 @@ namespace Solvix.Client.MVVM.ViewModels
                 {
                     _logger.LogInformation("SignalR send failed or not connected. Sending message via ChatService API.");
                     var sentMessageDto = await _chatService.SendMessageAsync(ActualChatId, contentCopy);
-                    await MainThread.InvokeOnMainThreadAsync(() => UpdateSentMessageStatusFromApi(optimisticMessage, sentMessageDto));
+
+                    await MainThread.InvokeOnMainThreadAsync(() =>
+                    {
+                        if (sentMessageDto != null)
+                        {
+                            UpdateSentMessageStatusFromApi(optimisticMessage, sentMessageDto);
+
+                            // Update the chat service cache
+                            _chatService.UpdateMessageCache(sentMessageDto);
+                            _chatService.UpdateChatCache(ActualChatId, sentMessageDto.Content, sentMessageDto.SentAt);
+                        }
+                        else
+                        {
+                            // Remove the failed message from UI
+                            Messages.Remove(optimisticMessage);
+                        }
+                    });
+
                     sentSuccessfully = sentMessageDto != null && sentMessageDto.Id > 0;
                 }
 
@@ -270,7 +322,18 @@ namespace Solvix.Client.MVVM.ViewModels
                     await MainThread.InvokeOnMainThreadAsync(() =>
                     {
                         var msgInList = Messages.FirstOrDefault(m => m.CorrelationId == optimisticMessage.CorrelationId);
-                        if (msgInList != null) MessageStatusHelper.UpdateMessageStatus(msgInList, Constants.MessageStatus.Failed, _logger);
+                        if (msgInList != null)
+                        {
+                            MessageStatusHelper.UpdateMessageStatus(msgInList, Constants.MessageStatus.Failed, _logger);
+                            // Remove failed message after a delay
+                            Task.Delay(3000).ContinueWith(_ =>
+                            {
+                                MainThread.BeginInvokeOnMainThread(() =>
+                                {
+                                    Messages.Remove(msgInList);
+                                });
+                            });
+                        }
                     });
                 }
             }
@@ -398,14 +461,39 @@ namespace Solvix.Client.MVVM.ViewModels
         private void SignalRMessageReceived(MessageModel message)
         {
             if (_isDisposed || message.ChatId != ActualChatId) return;
-            _logger.LogInformation("SignalRMessageReceived: Message Id {MessageId} for Chat {ChatId} from Sender {SenderId}", message.Id, message.ChatId, message.SenderId);
+            _logger.LogInformation("SignalRMessageReceived: Message Id {MessageId} for Chat {ChatId} from Sender {SenderId}",
+                message.Id, message.ChatId, message.SenderId);
 
             MainThread.BeginInvokeOnMainThread(async () =>
             {
                 if (_currentUserId == 0) _currentUserId = await _authService.GetUserIdAsync();
 
                 SetMessageStatusFromData(message);
-                AddMessageToCollection(message);
+
+                // Check if this is our own message that we already have in the collection
+                var existingMessage = Messages.FirstOrDefault(m => m.Id == message.Id ||
+                    (!string.IsNullOrEmpty(m.CorrelationId) && m.Content == message.Content && m.SenderId == message.SenderId));
+
+                if (existingMessage != null)
+                {
+                    // Update existing message rather than adding new one
+                    _logger.LogInformation("Found existing message, updating instead of adding. ID: {MessageId}", message.Id);
+
+                    existingMessage.Id = message.Id;
+                    existingMessage.Status = message.Status;
+                    existingMessage.SentAt = message.SentAt;
+                    existingMessage.IsRead = message.IsRead;
+                    existingMessage.ReadAt = message.ReadAt;
+
+                    // Update cache
+                    _chatService.UpdateMessageCache(existingMessage);
+                }
+                else
+                {
+                    // Add new message
+                    AddMessageToCollection(message);
+                    _chatService.UpdateMessageCache(message);
+                }
 
                 if (!message.IsOwnMessage && Shell.Current?.CurrentPage is ChatPage)
                 {
@@ -417,23 +505,30 @@ namespace Solvix.Client.MVVM.ViewModels
         private void SignalRMessageCorrelationConfirmation(string correlationId, int serverMessageId)
         {
             if (_isDisposed) return;
-            _logger.LogInformation("SignalRMessageCorrelationConfirmation: CorrId={CorrelationId}, ServerId={ServerMessageId}", correlationId, serverMessageId);
+            _logger.LogInformation("SignalRMessageCorrelationConfirmation: CorrId={CorrelationId}, ServerId={ServerMessageId}",
+                correlationId, serverMessageId);
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
                 var optimisticMessage = Messages.FirstOrDefault(m => m.CorrelationId == correlationId);
                 if (optimisticMessage != null)
                 {
-                    _logger.LogInformation("Found optimistic message for CorrId {CorrelationId}. Updating Id to {ServerMessageId} and Status to Sent.", correlationId, serverMessageId);
+                    _logger.LogInformation("Found optimistic message for CorrId {CorrelationId}. Updating Id to {ServerMessageId} and Status to Sent.",
+                        correlationId, serverMessageId);
                     optimisticMessage.Id = serverMessageId;
+
                     if (optimisticMessage.Status == Constants.MessageStatus.Sending)
                     {
                         MessageStatusHelper.UpdateMessageStatus(optimisticMessage, Constants.MessageStatus.Sent, _logger);
                     }
+
+                    // Update cache
+                    _chatService.UpdateMessageCache(optimisticMessage);
                 }
                 else
                 {
-                    _logger.LogWarning("Received correlation confirmation for CorrId {CorrelationId}, but no matching optimistic message found.", correlationId);
+                    _logger.LogWarning("Received correlation confirmation for CorrId {CorrelationId}, but no matching optimistic message found.",
+                        correlationId);
                 }
             });
         }
@@ -803,15 +898,13 @@ namespace Solvix.Client.MVVM.ViewModels
         protected virtual void Dispose(bool disposing)
         {
             if (_isDisposed) return;
+
             if (disposing)
             {
                 _logger.LogInformation("Disposing ChatPageViewModel for ChatId {ChatId}", ActualChatId);
-                _isDisposed = true;
-                _signalRService.OnMessageReceived -= SignalRMessageReceived;
-                _signalRService.OnMessageStatusUpdated -= SignalRMessageStatusUpdated;
-                _signalRService.OnConnectionStateChanged -= SignalRConnectionStateChanged;
-                _signalRService.OnUserTyping -= SignalRUserTyping;
-                _signalRService.OnMessageCorrelationConfirmation -= SignalRMessageCorrelationConfirmation;
+
+                // Unsubscribe from SignalR events
+                UnsubscribeFromSignalREvents();
 
                 _loadMessagesCts?.Cancel();
                 _loadMessagesCts?.Dispose();
@@ -820,6 +913,8 @@ namespace Solvix.Client.MVVM.ViewModels
                 _initializeSemaphore.Dispose();
                 _loadMessagesSemaphore.Dispose();
             }
+
+            _isDisposed = true;
         }
     }
 }

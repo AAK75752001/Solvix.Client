@@ -1,22 +1,23 @@
 ﻿using Solvix.Client.MVVM.ViewModels;
-using System.Runtime.CompilerServices;
+using Microsoft.Extensions.Logging;
 
 namespace Solvix.Client.MVVM.Views;
 
 public partial class ChatPage : ContentPage
 {
     private readonly ChatPageViewModel _viewModel;
+    private readonly ILogger<ChatPage> _logger;
     private CancellationTokenSource? _typingCancellationTokenSource;
     private bool _isTyping = false;
     private DateTime _lastTypingTime = DateTime.MinValue;
     private bool _disposed = false;
 
-    public ChatPage(ChatPageViewModel viewModel)
+    public ChatPage(ChatPageViewModel viewModel, ILogger<ChatPage> logger)
     {
         InitializeComponent();
         _viewModel = viewModel;
+        _logger = logger;
         BindingContext = _viewModel;
-
     }
 
     protected override void OnAppearing()
@@ -46,8 +47,13 @@ public partial class ChatPage : ContentPage
         _typingCancellationTokenSource?.Cancel();
         _typingCancellationTokenSource?.Dispose();
         _typingCancellationTokenSource = null;
-    }
 
+        // Remove event handler
+        if (this.FindByName("MessageEditor") is Editor messageEditor)
+        {
+            messageEditor.TextChanged -= OnMessageTextChanged;
+        }
+    }
 
     private void OnRemainingItemsThresholdReached(object sender, EventArgs e)
     {
@@ -106,58 +112,5 @@ public partial class ChatPage : ContentPage
         {
             _logger.LogError(ex, "Error handling typing status");
         }
-    }
-
-    private void RestartTypingTimer()
-    {
-        StopTypingTimer();
-
-        // ایجاد CancellationTokenSource جدید
-        _typingCancellationTokenSource = new CancellationTokenSource();
-        var token = _typingCancellationTokenSource.Token;
-
-        // اعلام وضعیت تایپ کردن به سرور
-        Task.Run(async () =>
-        {
-            try
-            {
-                if (!token.IsCancellationRequested)
-                {
-                    await _viewModel.UpdateTypingStatusAsync(true);
-
-                    // شروع تایمر برای تشخیص پایان تایپ کردن
-                    MainThread.BeginInvokeOnMainThread(() => _typingTimer.Start());
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Error in typing status: {ex.Message}");
-            }
-        }, token);
-    }
-
-    private void StopTypingTimer()
-    {
-        _typingTimer.Stop();
-
-        _typingCancellationTokenSource?.Cancel();
-        _typingCancellationTokenSource?.Dispose();
-        _typingCancellationTokenSource = null;
-    }
-
-    private async void OnTypingTimerTick(object? sender, EventArgs e)
-    {
-        _typingTimer.Stop();
-        await _viewModel.UpdateTypingStatusAsync(false);
-    }
-
-    private void Dispose()
-    {
-        if (_disposed) return;
-
-        StopTypingTimer();
-        _typingTimer.Tick -= OnTypingTimerTick;
-
-        _disposed = true;
     }
 }

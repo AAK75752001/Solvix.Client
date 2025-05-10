@@ -99,7 +99,7 @@ namespace Solvix.Client.MVVM.ViewModels
                     return;
                 }
 
-                var chatList = await _chatService.GetUserChatsAsync();
+                var chatList = await _chatService.GetUserChatsAsync(forceRefresh);
 
                 if (chatList != null)
                 {
@@ -137,6 +137,9 @@ namespace Solvix.Client.MVVM.ViewModels
 
                     FilterChats();
                     _logger.LogInformation("Chats loaded and filtered successfully. Count: {Count}", _allChats.Count);
+
+                    // Update last refresh time
+                    _lastRefreshTime = DateTime.UtcNow;
                 }
                 else
                 {
@@ -319,7 +322,7 @@ namespace Solvix.Client.MVVM.ViewModels
             _logger.LogDebug("Message received via SignalR: ChatId={ChatId}, MessageId={MessageId}, Content={Content}",
                 message.ChatId, message.Id, message.Content?.Substring(0, Math.Min(20, message.Content?.Length ?? 0)));
 
-            MainThread.BeginInvokeOnMainThread(async () =>
+            MainThread.BeginInvokeOnMainThread(() =>
             {
                 try
                 {
@@ -332,19 +335,13 @@ namespace Solvix.Client.MVVM.ViewModels
                         chat.LastMessage = message.Content;
                         chat.LastMessageTime = message.SentAt;
 
+                        // Update cache in ChatService
+                        _chatService.UpdateChatCache(message.ChatId, message.Content, message.SentAt);
+
                         // اگر پیام از طرف مقابل است و چت انتخاب نشده، تعداد پیام‌های نخوانده را افزایش دهیم
                         if (message.SenderId != _currentUserId && (_selectedChat == null || _selectedChat.Id != chat.Id))
                         {
                             chat.UnreadCount++;
-                        }
-
-                        _logger.LogDebug("Updated chat {ChatId} with new message data. LastMessage: {LastMessage}, LastMessageTime: {LastMessageTime}",
-                            chat.Id, chat.LastMessage?.Substring(0, Math.Min(20, chat.LastMessage?.Length ?? 0)), chat.LastMessageTime);
-
-                        // اطمینان از به‌روزرسانی زمان آخرین پیام
-                        if (chat.LastMessageTime == null || chat.LastMessageTime == default)
-                        {
-                            chat.LastMessageTime = DateTime.UtcNow;
                         }
 
                         // مرتب‌سازی مجدد چت‌ها بر اساس زمان آخرین پیام
@@ -357,7 +354,7 @@ namespace Solvix.Client.MVVM.ViewModels
                     {
                         // چت جدید است، باید لیست چت‌ها را به‌روزرسانی کنیم
                         _logger.LogInformation("Received message for unknown chat {ChatId}. Refreshing chat list...", message.ChatId);
-                        await LoadChatsAsync(true);
+                        LoadChatsAsync(true).ConfigureAwait(false);
                     }
                 }
                 catch (Exception ex)

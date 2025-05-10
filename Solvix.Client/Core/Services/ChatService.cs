@@ -117,6 +117,24 @@ namespace Solvix.Client.Core.Services
         }
 
 
+        public void UpdateChatCache(Guid chatId, string lastMessage, DateTime lastMessageTime, bool incrementUnread = false)
+        {
+            if (_chatsCache.TryGetValue(chatId, out var chat))
+            {
+                chat.LastMessage = lastMessage;
+                chat.LastMessageTime = lastMessageTime;
+
+                if (incrementUnread)
+                {
+                    chat.UnreadCount++;
+                }
+
+                _logger.LogDebug("Updated chat cache for {ChatId}. LastMessage: {LastMessage}, LastMessageTime: {LastMessageTime}",
+                    chatId, lastMessage, lastMessageTime);
+            }
+        }
+
+
         // Method to update cache when new message arrives
         public void UpdateMessageCache(MessageModel message)
         {
@@ -245,6 +263,12 @@ namespace Solvix.Client.Core.Services
                         message.SentAt = DateTime.UtcNow;
                         _logger.LogWarning("Message SentAt was default, setting to current UTC time: {Now}", message.SentAt);
                     }
+
+                    // Update message cache
+                    UpdateMessageCache(message);
+
+                    // Update chat cache
+                    UpdateChatCache(chatId, message.Content, message.SentAt);
                 }
                 else
                 {
