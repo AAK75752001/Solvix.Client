@@ -10,10 +10,12 @@ namespace Solvix.Client
         private readonly IAuthService _authService;
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<App> _logger;
+        private readonly IThemeService _themeService;
 
         public App(
             IAuthService authService,
             IServiceProvider serviceProvider,
+            IThemeService themeService,
             ILogger<App> logger)
         {
             InitializeComponent();
@@ -21,8 +23,10 @@ namespace Solvix.Client
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _authService = authService ?? throw new ArgumentNullException(nameof(authService));
             _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+            _themeService = themeService ?? throw new ArgumentNullException(nameof(themeService));
 
-            ApplySolvixTheme();
+
+            _themeService.LoadSavedTheme();
 
             SetInitialPage();
         }

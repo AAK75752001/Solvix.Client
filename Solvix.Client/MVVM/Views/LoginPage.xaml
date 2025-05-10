@@ -4,6 +4,7 @@
              xmlns:vm="clr-namespace:Solvix.Client.MVVM.ViewModels"
              xmlns:toolkit="http://schemas.microsoft.com/dotnet/2022/maui/toolkit"
              xmlns:converters="clr-namespace:Solvix.Client.Core.Converters"
+             xmlns:controls="clr-namespace:Solvix.Client.MVVM.Controls"
              x:Class="Solvix.Client.MVVM.Views.LoginPage"
              x:DataType="vm:LoginViewModel"
              Shell.NavBarIsVisible="False"
@@ -14,195 +15,199 @@
             <converters:GreaterThanZeroConverter x:Key="GreaterThanZeroConverter"/>
             <toolkit:InvertedBoolConverter x:Key="InverseBoolConverter" />
             <toolkit:IsStringNotNullOrWhiteSpaceConverter x:Key="IsStringNotNullOrWhiteSpaceConverter"/>
-            <Style x:Key="InputFrameStyle" TargetType="Frame">
+
+            <Style x:Key="NeonInputFrameStyle" TargetType="Frame">
                 <Setter Property="Padding" Value="0"/>
                 <Setter Property="Margin" Value="0,5"/>
                 <Setter Property="CornerRadius" Value="12"/>
-                <Setter Property="BorderColor" Value="{DynamicResource FrameBorderColor}"/>
+                <Setter Property="BorderColor" Value="Transparent"/>
                 <Setter Property="BackgroundColor" Value="{DynamicResource CardBackgroundColor}"/>
                 <Setter Property="HasShadow" Value="False"/>
             </Style>
-            <Style x:Key="InputFieldStyle" TargetType="Entry">
-                <Setter Property="TextColor" Value="{DynamicResource PrimaryTextColor}"/>
-                <Setter Property="PlaceholderColor" Value="{DynamicResource TertiaryTextColor}"/>
-                <Setter Property="FontSize" Value="16"/>
-                <Setter Property="HeightRequest" Value="55"/>
-                <Setter Property="VerticalTextAlignment" Value="Center"/>
-                <Setter Property="Margin" Value="15,0"/>
-                <Setter Property="FlowDirection" Value="LeftToRight"/>
-            </Style>
-            <Style x:Key="NameInputFieldStyle" BasedOn="{StaticResource InputFieldStyle}" TargetType="Entry">
-                <Setter Property="FlowDirection" Value="RightToLeft"/>
-            </Style>
-            <Style x:Key="ValidationLabelStyle" TargetType="Label">
-                <Setter Property="TextColor" Value="{DynamicResource ErrorColor}"/>
-                <Setter Property="FontSize" Value="12"/>
-                <Setter Property="Margin" Value="10,0,0,5"/>
-                <Setter Property="IsVisible" Value="{Binding Source={RelativeSource Self}, Path=Text, Converter={StaticResource IsStringNotNullOrWhiteSpaceConverter}}"/>
-                <Setter Property="HorizontalOptions" Value="Start"/>
-            </Style>
-            <Style x:Key="PrimaryButtonStyle" TargetType="Button">
-                <Setter Property="BackgroundColor" Value="{DynamicResource PrimaryColor}"/>
-                <Setter Property="TextColor" Value="{DynamicResource InverseTextColor}"/>
-                <Setter Property="CornerRadius" Value="28"/>
-                <Setter Property="HeightRequest" Value="55"/>
-                <Setter Property="FontSize" Value="18"/>
-                <Setter Property="FontAttributes" Value="Bold"/>
-                <Setter Property="VisualStateManager.VisualStateGroups">
-                    <VisualStateGroupList>
-                        <VisualStateGroup Name="CommonStates">
-                            <VisualState Name="Normal" />
-                            <VisualState Name="Disabled">
-                                <VisualState.Setters>
-                                    <Setter Property="BackgroundColor" Value="{DynamicResource TertiaryTextColor}"/>
-                                    <Setter Property="TextColor" Value="{DynamicResource PageBackgroundColor}"/>
-                                </VisualState.Setters>
-                            </VisualState>
-                        </VisualStateGroup>
-                    </VisualStateGroupList>
-                </Setter>
-            </Style>
-            <Style x:Key="TextButtonStyle" TargetType="Button">
-                <Setter Property="TextColor" Value="{DynamicResource PrimaryColor}"/>
+
+            <Style x:Key="NeonBorderStyle" TargetType="Border">
+                <Setter Property="Padding" Value="2"/>
+                <Setter Property="StrokeThickness" Value="2"/>
                 <Setter Property="BackgroundColor" Value="Transparent"/>
-                <Setter Property="FontSize" Value="14"/>
-                <Setter Property="Padding" Value="0"/>
-                <Setter Property="MinimumHeightRequest" Value="0"/>
-            </Style>
-            <Style x:Key="IconButtonStyle" BasedOn="{StaticResource TextButtonStyle}" TargetType="Button">
-                <Setter Property="Padding" Value="10,0"/>
-                <Setter Property="FontSize" Value="24"/>
-                <Setter Property="FontFamily" Value="MaterialIcons"/>
-                <Setter Property="TextColor" Value="{DynamicResource SecondaryTextColor}"/>
-                <Setter Property="MinimumWidthRequest" Value="40"/>
-                <Setter Property="VerticalOptions" Value="Center"/>
-            </Style>
-            <Style x:Key="ChangeNumberButtonStyle" BasedOn="{StaticResource TextButtonStyle}" TargetType="Button">
-                <Setter Property="Padding" Value="0"/>
-                <Setter Property="FontSize" Value="12"/>
-                <Setter Property="TextColor" Value="{DynamicResource SecondaryTextColor}"/>
+                <Setter Property="StrokeShape">
+                    <RoundRectangle CornerRadius="12"/>
+                </Setter>
             </Style>
         </ResourceDictionary>
     </ContentPage.Resources>
 
-    <ScrollView>
-        <VerticalStackLayout Padding="30,20" Spacing="10" VerticalOptions="Center">
+    <Grid>
+        <!-- Animated Background -->
+        <Grid x:Name="BackgroundGradient" Opacity="0.1">
+            <Grid.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                    <GradientStop Color="{DynamicResource GradientStart}" Offset="0.0"/>
+                    <GradientStop Color="{DynamicResource GradientMiddle}" Offset="0.5"/>
+                    <GradientStop Color="{DynamicResource GradientEnd}" Offset="1.0"/>
+                </LinearGradientBrush>
+            </Grid.Background>
+        </Grid>
 
-            <Image Source="logo.png" HeightRequest="80" HorizontalOptions="Center" Margin="0,0,0,30"/>
+        <ScrollView>
+            <VerticalStackLayout Padding="30,20" Spacing="15" VerticalOptions="Center">
 
-            <Label Text="ورود یا ثبت‌نام"
-                   FontSize="24"
-                   FontAttributes="Bold"
-                   HorizontalTextAlignment="Center"
-                   TextColor="{DynamicResource PrimaryTextColor}"/>
+                <!-- Logo with Glow -->
+                <Border HeightRequest="100" 
+                        WidthRequest="100" 
+                        HorizontalOptions="Center"
+                        Margin="0,0,0,30"
+                        StrokeShape="RoundRectangle 50"
+                        Stroke="{DynamicResource AccentColor}"
+                        StrokeThickness="2">
+                    <Border.Shadow>
+                        <Shadow Brush="{DynamicResource AccentColor}" 
+                                Offset="0,0" 
+                                Radius="30" 
+                                Opacity="0.6"/>
+                    </Border.Shadow>
+                    <Image Source="logo.png" Margin="20"/>
+                </Border>
 
-            <Label Text="شماره تلفن خود را وارد کنید"
-                   FontSize="14"
-                   HorizontalTextAlignment="Center"
-                   TextColor="{DynamicResource SecondaryTextColor}"
-                   Margin="0,0,0,25"/>
+                <Label Text="ورود یا ثبت‌نام"
+                       FontSize="28"
+                       FontAttributes="Bold"
+                       HorizontalTextAlignment="Center"
+                       TextColor="{DynamicResource PrimaryTextColor}"/>
 
-            <Frame Style="{StaticResource InputFrameStyle}">
-                <Frame.Triggers>
-                    <DataTrigger TargetType="Frame" Binding="{Binding Errors[PhoneNumber].Count, FallbackValue=0, Converter={StaticResource GreaterThanZeroConverter}}" Value="True">
-                        <Setter Property="BorderColor" Value="{DynamicResource ErrorColor}"/>
-                    </DataTrigger>
-                </Frame.Triggers>
-                <Entry x:Name="PhoneNumberEntry"
-                       Placeholder="شماره تلفن (مثال: 0912...)"
-                       Text="{Binding PhoneNumber, Mode=TwoWay}"
-                       Keyboard="Telephone"
-                       MaxLength="11"
-                       IsEnabled="{Binding IsPhoneNumberLocked, Converter={StaticResource InverseBoolConverter}}"
-                       Style="{StaticResource InputFieldStyle}"/>
-            </Frame>
-            <Label Style="{StaticResource ValidationLabelStyle}"
-                   Text="{Binding Errors[PhoneNumber][0]}"/>
+                <Label Text="سالویکس مسنجر نسل جدید"
+                       FontSize="16"
+                       HorizontalTextAlignment="Center"
+                       TextColor="{DynamicResource SecondaryTextColor}"
+                       Margin="0,0,0,25"/>
 
-            <Button Text="تغییر شماره؟"
-                    Command="{Binding ChangePhoneNumberCommand}"
-                    IsVisible="{Binding IsPhoneNumberLocked}"
-                    HorizontalOptions="End"
-                    Style="{StaticResource ChangeNumberButtonStyle}"
-                    Margin="0,-5,0,15"/>
-
-            <ActivityIndicator IsRunning="{Binding IsLoading}" IsVisible="{Binding IsLoading}" Color="{DynamicResource PrimaryColor}" Margin="0,10"/>
-
-            <Frame Style="{StaticResource InputFrameStyle}"
-                    IsVisible="{Binding ShowPasswordSection}">
-                <Frame.Triggers>
-                    <DataTrigger TargetType="Frame" Binding="{Binding Errors[Password].Count, FallbackValue=0, Converter={StaticResource GreaterThanZeroConverter}}" Value="True">
-                        <Setter Property="BorderColor" Value="{DynamicResource ErrorColor}"/>
-                    </DataTrigger>
-                </Frame.Triggers>
-                <Grid ColumnDefinitions="*, Auto">
-                    <Entry Placeholder="رمز عبور"
-                            Text="{Binding Password, Mode=TwoWay}"
-                            IsPassword="{Binding IsPasswordVisible, Converter={StaticResource InverseBoolConverter}}"
-                            Grid.Column="0"
-                            Style="{StaticResource InputFieldStyle}"/>
-                    <Button Grid.Column="1"
-                             Command="{Binding TogglePasswordVisibilityCommand}"
-                             Style="{StaticResource IconButtonStyle}">
-                        <Button.Triggers>
-                            <DataTrigger TargetType="Button" Binding="{Binding IsPasswordVisible}" Value="True">
-                                <Setter Property="Text" Value="visibility_off" />
-                            </DataTrigger>
-                            <DataTrigger TargetType="Button" Binding="{Binding IsPasswordVisible}" Value="False">
-                                <Setter Property="Text" Value="visibility" />
-                            </DataTrigger>
-                        </Button.Triggers>
-                    </Button>
-                </Grid>
-            </Frame>
-            <Label Style="{StaticResource ValidationLabelStyle}"
-                    Text="{Binding Errors[Password][0]}"
-                    IsVisible="{Binding ShowPasswordSection}"/>
-
-            <VerticalStackLayout IsVisible="{Binding ShowRegistrationSection}" Spacing="10" Margin="0,15,0,0">
-                <Label Text="تکمیل اطلاعات کاربری"
-                        FontSize="16"
-                        FontAttributes="Bold"
-                        HorizontalTextAlignment="Center"
-                        TextColor="{DynamicResource PrimaryTextColor}" Margin="0,0,0,10"/>
-
-                <Frame Style="{StaticResource InputFrameStyle}">
-                    <Frame.Triggers>
-                        <DataTrigger TargetType="Frame" Binding="{Binding Errors[FirstName].Count, FallbackValue=0, Converter={StaticResource GreaterThanZeroConverter}}" Value="True">
-                            <Setter Property="BorderColor" Value="{DynamicResource ErrorColor}"/>
+                <!-- Phone Number Input with Neon Border -->
+                <Border Style="{StaticResource NeonBorderStyle}"
+                        Stroke="{DynamicResource FrameBorderColor}">
+                    <Border.Triggers>
+                        <DataTrigger TargetType="Border" 
+                                     Binding="{Binding Errors[PhoneNumber].Count, FallbackValue=0, Converter={StaticResource GreaterThanZeroConverter}}" 
+                                     Value="True">
+                            <Setter Property="Stroke" Value="{DynamicResource ErrorColor}"/>
+                            <Setter Property="Shadow">
+                                <Shadow Brush="{DynamicResource ErrorColor}" 
+                                        Offset="0,0" 
+                                        Radius="10" 
+                                        Opacity="0.5"/>
+                            </Setter>
                         </DataTrigger>
-                    </Frame.Triggers>
-                    <Entry Placeholder="نام"
-                             Text="{Binding FirstName, Mode=TwoWay}"
-                             Style="{StaticResource NameInputFieldStyle}"/>
-                </Frame>
-                <Label Style="{StaticResource ValidationLabelStyle}" Text="{Binding Errors[FirstName][0]}"/>
+                    </Border.Triggers>
+                    <Entry x:Name="PhoneNumberEntry"
+                           Placeholder="شماره تلفن (مثال: 0912...)"
+                           Text="{Binding PhoneNumber, Mode=TwoWay}"
+                           Keyboard="Telephone"
+                           MaxLength="11"
+                           IsEnabled="{Binding IsPhoneNumberLocked, Converter={StaticResource InverseBoolConverter}}"
+                           BackgroundColor="Transparent"
+                           TextColor="{DynamicResource PrimaryTextColor}"
+                           PlaceholderColor="{DynamicResource TertiaryTextColor}"
+                           FontSize="16"
+                           HeightRequest="55"
+                           Margin="15,0"/>
+                </Border>
 
-                <Frame Style="{StaticResource InputFrameStyle}">
-                    <Frame.Triggers>
-                        <DataTrigger TargetType="Frame" Binding="{Binding Errors[LastName].Count, FallbackValue=0, Converter={StaticResource GreaterThanZeroConverter}}" Value="True">
-                            <Setter Property="BorderColor" Value="{DynamicResource ErrorColor}"/>
+                <Label Style="{StaticResource ValidationLabelStyle}"
+                       Text="{Binding Errors[PhoneNumber][0]}"
+                       TextColor="{DynamicResource ErrorColor}"
+                       FontSize="12"
+                       Margin="10,0,0,5"/>
+
+                <!-- Loading Animation -->
+                <ActivityIndicator IsRunning="{Binding IsLoading}" 
+                                   IsVisible="{Binding IsLoading}" 
+                                   Color="{DynamicResource PrimaryColor}" 
+                                   Margin="0,10"
+                                   Scale="1.2"/>
+
+                <!-- Password Input -->
+                <Border Style="{StaticResource NeonBorderStyle}"
+                        Stroke="{DynamicResource FrameBorderColor}"
+                        IsVisible="{Binding ShowPasswordSection}">
+                    <Border.Triggers>
+                        <DataTrigger TargetType="Border" 
+                                     Binding="{Binding Errors[Password].Count, FallbackValue=0, Converter={StaticResource GreaterThanZeroConverter}}" 
+                                     Value="True">
+                            <Setter Property="Stroke" Value="{DynamicResource ErrorColor}"/>
                         </DataTrigger>
-                    </Frame.Triggers>
-                    <Entry Placeholder="نام خانوادگی"
-                             Text="{Binding LastName, Mode=TwoWay}"
-                             Style="{StaticResource NameInputFieldStyle}"/>
-                </Frame>
-                <Label Style="{StaticResource ValidationLabelStyle}" Text="{Binding Errors[LastName][0]}"/>
+                    </Border.Triggers>
+                    <Grid ColumnDefinitions="*, Auto">
+                        <Entry Placeholder="رمز عبور"
+                               Text="{Binding Password, Mode=TwoWay}"
+                               IsPassword="{Binding IsPasswordVisible, Converter={StaticResource InverseBoolConverter}}"
+                               Grid.Column="0"
+                               BackgroundColor="Transparent"
+                               TextColor="{DynamicResource PrimaryTextColor}"
+                               PlaceholderColor="{DynamicResource TertiaryTextColor}"
+                               FontSize="16"
+                               HeightRequest="55"
+                               Margin="15,0"/>
+                        <Button Grid.Column="1"
+                                Command="{Binding TogglePasswordVisibilityCommand}"
+                                BackgroundColor="Transparent"
+                                TextColor="{DynamicResource SecondaryTextColor}"
+                                FontFamily="MaterialIcons"
+                                FontSize="24"
+                                WidthRequest="40"
+                                Margin="0,0,10,0">
+                            <Button.Triggers>
+                                <DataTrigger TargetType="Button" Binding="{Binding IsPasswordVisible}" Value="True">
+                                    <Setter Property="Text" Value="visibility_off" />
+                                </DataTrigger>
+                                <DataTrigger TargetType="Button" Binding="{Binding IsPasswordVisible}" Value="False">
+                                    <Setter Property="Text" Value="visibility" />
+                                </DataTrigger>
+                            </Button.Triggers>
+                        </Button>
+                    </Grid>
+                </Border>
 
+                <!-- Registration Fields -->
+                <VerticalStackLayout IsVisible="{Binding ShowRegistrationSection}" Spacing="15" Margin="0,15,0,0">
+                    <Label Text="تکمیل اطلاعات کاربری"
+                           FontSize="18"
+                           FontAttributes="Bold"
+                           HorizontalTextAlignment="Center"
+                           TextColor="{DynamicResource PrimaryTextColor}" 
+                           Margin="0,0,0,10"/>
+
+                    <Border Style="{StaticResource NeonBorderStyle}" Stroke="{DynamicResource FrameBorderColor}">
+                        <Entry Placeholder="نام"
+                               Text="{Binding FirstName, Mode=TwoWay}"
+                               BackgroundColor="Transparent"
+                               TextColor="{DynamicResource PrimaryTextColor}"
+                               PlaceholderColor="{DynamicResource TertiaryTextColor}"
+                               FontSize="16"
+                               HeightRequest="55"
+                               Margin="15,0"/>
+                    </Border>
+
+                    <Border Style="{StaticResource NeonBorderStyle}" Stroke="{DynamicResource FrameBorderColor}">
+                        <Entry Placeholder="نام خانوادگی"
+                               Text="{Binding LastName, Mode=TwoWay}"
+                               BackgroundColor="Transparent"
+                               TextColor="{DynamicResource PrimaryTextColor}"
+                               PlaceholderColor="{DynamicResource TertiaryTextColor}"
+                               FontSize="16"
+                               HeightRequest="55"
+                               Margin="15,0"/>
+                    </Border>
+                </VerticalStackLayout>
+
+                <!-- Submit Button -->
+                <controls:NeonButton Text="{Binding SubmitButtonText}"
+                                     Command="{Binding SubmitCommand}"
+                                     BackgroundColor="{DynamicResource PrimaryColor}"
+                                     TextColor="{DynamicResource InverseTextColor}"
+                                     GlowColor="{DynamicResource PrimaryColor}"
+                                     BorderColor="{DynamicResource PrimaryColor}"
+                                     FontSize="18"
+                                     Margin="0,25,0,0"
+                                     HeightRequest="55"/>
             </VerticalStackLayout>
-
-            <Button Text="{Binding SubmitButtonText}"
-                     Command="{Binding SubmitCommand}"
-                     Style="{StaticResource PrimaryButtonStyle}"
-                     Margin="0,25,0,0"/>
-
-            <Button Text="فراموشی رمز عبور؟"
-                     Command="{Binding ForgotPasswordCommand}"
-                     IsVisible="{Binding ShowPasswordSection}"
-                     HorizontalOptions="Center"
-                     Style="{StaticResource TextButtonStyle}" Margin="0,15,0,0"/>
-
-        </VerticalStackLayout>
-    </ScrollView>
+        </ScrollView>
+    </Grid>
 </ContentPage>
